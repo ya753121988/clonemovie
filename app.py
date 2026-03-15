@@ -10,7 +10,7 @@ app.secret_key = "universal_movie_cloner_key"
 
 # --- MongoDB Setup ---
 # সরাসরি আপনার MONGO_URI এখানে বসান অথবা Environment Variable হিসেবে দিন
-MONGO_URI = "আপনার_মংগোডিবি_ইউআরএল_এখানে_দিন" 
+MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0" 
 client = MongoClient(MONGO_URI)
 db = client['multisite_movie_vault']
 sites_col = db['sites']
