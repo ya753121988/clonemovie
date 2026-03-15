@@ -6,10 +6,10 @@ from werkzeug.security import generate_password_hash, check_password_hash
 
 # --- Flask Initial Setup ---
 app = Flask(__name__)
-app.secret_key = "ultimate_premium_standalone_standalone_v1000"
+app.secret_key = "STANDALONE_STANDALONE_MASTER_ULTIMATE_V1000"
 
 # --- MongoDB Connection ---
-# মূল ডাটাবেস যা থেকে মেইন সাইট চলে
+# আপনার দেওয়া মূল MongoDB URI
 MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 client = MongoClient(MONGO_URI)
 db = client['movie_standalone_mega_db']
@@ -18,7 +18,7 @@ movies_col = db['movies']
 files_col = db['stored_files']
 bot_states = db['bot_states']
 
-# --- Initialize Default Settings (সব ফিচার সহ) ---
+# --- Initialize Default Settings (বক্স এবং আইডি সহ) ---
 def init_settings():
     if settings_col.count_documents({}) == 0:
         settings_col.insert_one({
@@ -31,6 +31,7 @@ def init_settings():
             "tmdb_key": "275aff9f1c570308fa10d14c6f49f998",
             "bot_token": "",
             "bot_username": "",
+            "channel_id": "", # ফাইল যে চ্যানেলে সেভ হবে
             "auto_delete_min": 0,
             "restrict_forward": False,
             "ads": {
@@ -48,8 +49,8 @@ def extract_quality(filename):
             return q.upper()
     return "Download"
 
-# --- Premium Layout Engine (Auto Responsive) ---
-def render_site(body_html, settings):
+# --- UI Layout (Auto Mobile/Desktop Responsive) ---
+def render_pro(body_html, settings):
     ads = settings.get('ads', {})
     cats = settings.get('categories', [])
     cat_links = "".join([f'<a href="/?cat={c.strip()}" class="hover:text-blue-500 transition whitespace-nowrap">{c.strip()}</a>' for c in cats])
@@ -70,17 +71,16 @@ def render_site(body_html, settings):
             .card:hover {{ transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 0 30px rgba(59, 130, 246, 0.4); }}
             .swiper-slide img {{ height: 500px; width: 100%; object-fit: cover; border-radius: 30px; filter: brightness(0.4); }}
             @media (max-width: 768px) {{ .swiper-slide img {{ height: 320px; }} }}
-            .copy-box {{ background: rgba(0,0,0,0.5); padding: 15px; border-radius: 15px; border: 1px dashed #10b981; margin-bottom: 15px; cursor: pointer; position: relative; }}
-            .copy-box:active {{ transform: scale(0.98); }}
+            .copy-box {{ background: rgba(0,0,0,0.5); padding: 15px; border-radius: 15px; border: 1px dashed #10b981; margin-bottom: 15px; cursor: pointer; }}
         </style>
         {ads.get('popunder', '')} {ads.get('social_bar', '')}
     </head>
     <body>
         {ads.get('header_ad', '')}
-        <div class="bg-blue-700 text-white text-center py-2 text-[10px] md:text-sm font-black uppercase px-4 shadow-lg">{settings['header_notice']}</div>
+        <div class="bg-blue-700 text-white text-center py-2 text-[10px] md:text-sm font-black uppercase px-4 shadow-lg tracking-widest">{settings['header_notice']}</div>
         
         <nav class="glass sticky top-0 z-50">
-            <div class="container mx-auto px-4 py-3 flex justify-between items-center text-white">
+            <div class="container mx-auto px-4 py-4 flex justify-between items-center">
                 <div class="flex items-center gap-4">
                     <a href="/clone-site" class="bg-gradient-to-r from-emerald-600 to-green-500 px-3 py-1.5 rounded-lg text-[10px] font-black uppercase shadow-lg">🚀 CLONE</a>
                     <a href="/" class="flex items-center gap-2">
@@ -90,10 +90,10 @@ def render_site(body_html, settings):
                 </div>
                 <div class="flex items-center gap-4">
                     <form action="/search" method="GET" class="hidden md:flex bg-black/50 rounded-full px-4 py-1 border border-white/10">
-                        <input name="q" placeholder="Search movies..." class="bg-transparent outline-none text-xs text-white w-40">
+                        <input name="q" placeholder="Search..." class="bg-transparent outline-none text-xs text-white w-40">
                     </form>
-                    <div class="hidden lg:flex gap-6 text-[11px] font-black uppercase tracking-widest">{cat_links}</div>
-                    <a href="/admin" class="bg-slate-800 hover:bg-blue-600 px-4 py-1.5 rounded-full text-[10px] font-bold transition border border-white/10">ADMIN ⚙️</a>
+                    <div class="hidden lg:flex gap-6 text-[11px] font-black uppercase">{cat_links}</div>
+                    <a href="/admin" class="bg-slate-800 hover:bg-blue-600 px-4 py-1.5 rounded-full text-[10px] font-bold transition">ADMIN ⚙️</a>
                 </div>
             </div>
         </nav>
@@ -110,7 +110,7 @@ def render_site(body_html, settings):
             function copyToClipboard(id) {{
                 var text = document.getElementById(id).innerText;
                 navigator.clipboard.writeText(text);
-                alert("Copied to Clipboard! ✅");
+                alert("URL Copied! ✅");
             }}
         </script>
         {ads.get('native_banner', '')}
@@ -147,8 +147,7 @@ def home():
             </div>"""
         slider_html += '</div><div class="swiper-pagination"></div></div>'
 
-    title = q if q else (cat if cat else "Latest Movies 🍿")
-    grid_html = f'<h2 class="text-2xl md:text-3xl font-black mb-8 border-l-4 border-blue-600 pl-4 uppercase tracking-widest text-blue-500">{title}</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-8">'
+    grid_html = f'<h2 class="text-2xl md:text-3xl font-black mb-8 border-l-4 border-blue-600 pl-4 uppercase tracking-widest text-blue-500">{q if q else "Latest Movies"}</h2><div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-4 md:gap-8">'
     for m in movies:
         grid_html += f"""
         <a href="/movie/{m['_id']}" class="card rounded-3xl overflow-hidden group">
@@ -158,11 +157,11 @@ def home():
             </div>
             <div class="p-4 text-center">
                 <h3 class="text-[11px] font-black truncate uppercase text-slate-100 group-hover:text-blue-500 transition">{m['title']}</h3>
-                <p class="text-[10px] text-slate-500 mt-1 font-bold uppercase">{m['year']} | {m['category']}</p>
+                <p class="text-[10px] text-slate-500 mt-1 uppercase font-bold">{m['year']} | {m['category']}</p>
             </div>
         </a>"""
     grid_html += '</div>'
-    return render_site(slider_html + grid_html, settings)
+    return render_pro(slider_html + grid_html, settings)
 
 @app.route('/movie/<id>')
 def movie_page(id):
@@ -170,35 +169,12 @@ def movie_page(id):
     m = movies_col.find_one({"_id": ObjectId(id)})
     if not m: return "Movie Not Found", 404
     
-    links_html = "".join([f'<a href="https://t.me/{settings["bot_username"]}?start={f["file_ref"]}" target="_blank" class="flex justify-between items-center bg-blue-600 hover:bg-blue-700 p-5 rounded-2xl font-black transition shadow-2xl group border-b-4 border-blue-900 active:border-0 uppercase tracking-tighter mb-4"><span>📥 DOWNLOAD {f["quality"]}</span><span class="text-[10px] bg-black/20 px-3 py-1 rounded-full font-black">Secure Bot</span></a>' for f in m['files']])
+    links_html = "".join([f'<a href="https://t.me/{settings["bot_username"]}?start={f["file_ref"]}" target="_blank" class="flex justify-between items-center bg-blue-600 hover:bg-blue-700 p-5 rounded-2xl font-black transition shadow-2xl group border-b-4 border-blue-900 active:border-0 uppercase tracking-tighter mb-4"><span>📥 DOWNLOAD {f["quality"]}</span><span class="text-[10px] bg-black/20 px-3 py-1 rounded-full font-black">Bot Server</span></a>' for f in m['files']])
 
-    content = f"""
-    <div class="flex flex-col lg:flex-row gap-12 mt-4">
-        <div class="w-full lg:w-1/3 shrink-0"><img src="{m['poster']}" class="rounded-[40px] shadow-2xl w-full border border-white/10 sticky top-24"></div>
-        <div class="flex-1">
-            <h1 class="text-4xl md:text-8xl font-black text-white leading-tight uppercase tracking-tighter">{m['title']}</h1>
-            <div class="flex flex-wrap gap-4 mt-8">
-                <span class="bg-blue-600 px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest">{m['category']}</span>
-                <span class="bg-slate-800 px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest text-yellow-500 shadow-xl">⭐ {m['rating']}</span>
-                <span class="bg-slate-800 px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest">{m['year']}</span>
-            </div>
-            <div class="mt-10 p-8 bg-slate-900/50 rounded-3xl border border-white/5 shadow-inner">
-                <h3 class="text-blue-500 font-black text-xs uppercase mb-4 tracking-widest text-white">Full Storyline 📖</h3>
-                <p class="text-slate-400 text-lg md:text-xl leading-relaxed italic font-medium">"{m['plot']}"</p>
-            </div>
-            <div class="mt-8 grid md:grid-cols-2 gap-6 text-[13px] text-slate-400">
-                <div class="bg-black/40 p-5 rounded-2xl border border-white/5"><b class="text-blue-500 uppercase block mb-1">🎬 Director</b> {m.get('director', 'Unknown')}</div>
-                <div class="bg-black/40 p-5 rounded-2xl border border-white/5"><b class="text-blue-500 uppercase block mb-1">🌟 Starring Cast</b> {m.get('cast', 'Unknown')}</div>
-            </div>
-            <div class="mt-12 space-y-4">
-                <h2 class="text-3xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3">📥 DOWNLOAD OPTIONS:</h2>
-                <div class="grid gap-4">{links_html}</div>
-            </div>
-        </div>
-    </div>"""
-    return render_site(content, settings)
+    content = f"""<div class="flex flex-col lg:flex-row gap-12 mt-4"><div class="w-full lg:w-1/3 shrink-0"><img src="{m['poster']}" class="rounded-[40px] shadow-2xl w-full border border-white/10 sticky top-24"></div><div class="flex-1"><h1 class="text-4xl md:text-8xl font-black text-white leading-tight uppercase tracking-tighter">{m['title']}</h1><div class="flex flex-wrap gap-4 mt-8"><span class="bg-blue-600 px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest">{m['category']}</span><span class="bg-slate-800 px-6 py-2 rounded-xl text-xs font-black uppercase text-yellow-500 shadow-xl">⭐ {m['rating']}</span><span class="bg-slate-800 px-6 py-2 rounded-xl text-xs font-black uppercase tracking-widest">{m['year']}</span></div><div class="mt-10 p-8 bg-slate-900/50 rounded-3xl border border-white/5 shadow-inner"><h3 class="text-blue-500 font-black text-xs uppercase mb-4 tracking-widest text-white">Full Movie Storyline 📖</h3><p class="text-slate-400 text-lg md:text-xl leading-relaxed italic font-medium">"{m['plot']}"</p></div><div class="mt-8 grid md:grid-cols-2 gap-6 text-[13px]"><div class="bg-black/40 p-5 rounded-2xl border border-white/5"><b class="text-blue-500 uppercase block mb-1">🎬 Director</b> {m.get('director', 'Unknown')}</div><div class="bg-black/40 p-5 rounded-2xl border border-white/5"><b class="text-blue-500 uppercase block mb-1">🌟 Starring Cast</b> {m.get('cast', 'Unknown')}</div></div><div class="mt-12 space-y-4"><h2 class="text-3xl font-black uppercase tracking-tighter mb-6 flex items-center gap-3">📥 DOWNLOAD OPTIONS:</h2><div class="grid gap-4">{links_html}</div></div></div></div>"""
+    return render_pro(content, settings)
 
-# --- Routes: Admin Dashboard ---
+# --- Admin Panel: Full Configuration ---
 
 @app.route('/admin', methods=['GET', 'POST'])
 def admin_login():
@@ -208,13 +184,14 @@ def admin_login():
         if u == settings['admin_user'] and check_password_hash(settings['admin_pass'], p):
             session['is_admin'] = True
             return redirect('/dashboard')
-        flash("❌ Authentication Failed!")
-    return render_site("""<div class="max-w-sm mx-auto bg-slate-900 p-10 rounded-[40px] border border-blue-500 shadow-2xl mt-10 text-center"><h2 class="text-2xl font-black mb-8 uppercase text-blue-500">Admin Login ⚙️</h2><form method="POST" class="space-y-4"><input name="user" placeholder="Username" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-white"><input name="pass" type="password" placeholder="Password" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-white"><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg">Authenticate</button></form></div>""", settings)
+        flash("❌ Access Denied!")
+    return render_pro("""<div class="max-w-sm mx-auto bg-slate-900 p-10 rounded-[40px] border border-blue-500 shadow-2xl mt-10 text-center"><h2 class="text-2xl font-black mb-8 uppercase text-blue-500">Admin Login ⚙️</h2><form method="POST" class="space-y-4"><input name="user" placeholder="Username" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-white"><input name="pass" type="password" placeholder="Password" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none focus:border-blue-500 text-white"><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg hover:bg-blue-700 transition">Authenticate</button></form></div>""", settings)
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if not session.get('is_admin'): return redirect('/admin')
     settings = settings_col.find_one({})
+    
     if request.method == 'POST':
         action = request.form.get('action')
         if action == "save":
@@ -225,6 +202,7 @@ def dashboard():
                 "tmdb_key": request.form.get('tmdb_key'), "bot_token": request.form.get('bot_token'),
                 "bot_username": request.form.get('bot_username').replace('@',''),
                 "categories": request.form.get('categories').split(','),
+                "channel_id": request.form.get('channel_id'), # Channel ID বক্স
                 "auto_delete_min": int(request.form.get('auto_delete_min', 0)),
                 "restrict_forward": request.form.get('restrict_forward') == "on",
                 "ads": {
@@ -235,11 +213,11 @@ def dashboard():
             }
             if new_pass: upd["admin_pass"] = generate_password_hash(new_pass)
             settings_col.update_one({}, {"$set": upd})
-            flash("✅ Settings Saved Successfully!")
+            flash("✅ Settings Synchronized!")
         elif action == "set_webhook":
             webhook_url = f"https://{request.host}/telegram-webhook"
-            r = requests.get(f"https://api.telegram.org/bot{settings['bot_token']}/setWebhook?url={webhook_url}")
-            flash(f"Webhook Status: {r.json().get('description')}")
+            requests.get(f"https://api.telegram.org/bot{settings['bot_token']}/setWebhook?url={webhook_url}")
+            flash("✅ Bot Connected!")
         return redirect('/dashboard')
 
     dq = request.args.get('dq')
@@ -247,8 +225,8 @@ def dashboard():
     movies = list(movies_col.find(mq).sort('_id', -1))
     movies_list_html = "".join([f'<div class="flex items-center justify-between bg-black/40 p-4 rounded-2xl border border-white/5 mb-3 shadow-lg"><div class="flex items-center gap-4"><img src="{m["poster"]}" class="h-10 w-8 rounded-lg object-cover"><span class="text-xs font-black truncate w-32 md:w-60 uppercase">{m["title"]}</span></div><div class="flex gap-2"><a href="/edit-movie/{m["_id"]}" class="bg-blue-600 px-3 py-1 rounded text-[9px] font-black uppercase">Edit</a><a href="/delete/{m["_id"]}" class="bg-red-600 px-3 py-1 rounded text-[9px] font-black uppercase" onclick="return confirm(\'Delete?\')">Delete</a></div></div>' for m in movies])
 
-    content = f"""<div class="grid lg:grid-cols-2 gap-10"><div class="bg-slate-900 p-8 rounded-[40px] border border-white/5 shadow-2xl"><h2 class="text-xl font-bold mb-6 uppercase text-blue-500 text-white">⚙️ Master Configuration</h2><form method="POST" class="space-y-4 text-[10px] font-black uppercase tracking-widest"><input type="hidden" name="action" value="save"><div class="grid grid-cols-2 gap-4"><input name="site_name" value="{settings['site_name']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="logo_url" value="{settings['logo_url']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><input name="header_notice" value="{settings['header_notice']}" class="w-full bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><div class="grid grid-cols-2 gap-4"><input name="tmdb_key" value="{settings['tmdb_key']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="bot_token" value="{settings['bot_token']}" placeholder="Bot Token" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><div class="grid grid-cols-2 gap-4"><input name="bot_username" value="{settings['bot_username']}" placeholder="Bot Username" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="categories" value="{','.join(settings['categories'])}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><div class="grid grid-cols-2 gap-4 bg-blue-600/10 p-4 rounded-2xl border border-blue-500/20"><div class="text-blue-400">Auto Delete (Min):<br><input name="auto_delete_min" type="number" value="{settings.get('auto_delete_min', 0)}" class="bg-black/50 p-2 rounded-xl mt-1 w-full text-white"></div><div class="text-blue-400">Restrict Forward:<br><input name="restrict_forward" type="checkbox" {"checked" if settings.get("restrict_forward") else ""} class="mt-3"></div></div><h3 class="text-emerald-500 underline mt-4">💰 Ad Management</h3><div class="grid grid-cols-2 gap-4"><textarea name="banner_ad" placeholder="Banner Ad" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('banner_ad','')}</textarea><textarea name="popunder" placeholder="Popunder" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('popunder','')}</textarea><textarea name="header_ad" placeholder="Header Ad" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('header_ad','')}</textarea><textarea name="footer_ad" placeholder="Footer Ad" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('footer_ad','')}</textarea></div><div class="p-6 bg-blue-600/10 rounded-[30px] border border-blue-600/20 mt-4"><input name="admin_user" value="{settings['admin_user']}" class="w-full bg-black/60 p-4 rounded-xl border border-white/10 mb-2 outline-none text-white"><input name="new_pass" type="password" placeholder="New Admin Password" class="w-full bg-black/60 p-4 rounded-xl border border-white/10 outline-none text-white"></div><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg">Save Master Settings</button></form><form method="POST" class="mt-4"><input type="hidden" name="action" value="set_webhook"><button class="w-full bg-emerald-600 py-3 rounded-xl font-black uppercase text-[10px] shadow-lg">🛠️ Auto Set Bot Webhook</button></form></div><div class="bg-slate-900 p-8 rounded-[40px] border border-white/5 shadow-2xl h-[1000px] overflow-y-auto"><h2 class="text-xl font-bold mb-6 uppercase text-emerald-500 text-white">🎬 Movie Management</h2><form action="/dashboard" method="GET" class="mb-4 flex gap-2"><input name="dq" placeholder="Search title..." class="w-full bg-black/40 p-3 rounded-xl border border-white/10 outline-none text-xs text-white"><button class="bg-blue-600 px-4 rounded-xl font-black text-xs uppercase shadow-lg">Filter</button></form>{movies_list_html}</div></div>"""
-    return render_site(content, settings)
+    content = f"""<div class="grid lg:grid-cols-2 gap-10"><div class="bg-slate-900 p-8 rounded-[40px] border border-white/5 shadow-2xl"><h2 class="text-xl font-bold mb-6 uppercase text-blue-500">⚙️ Master Settings</h2><form method="POST" class="space-y-4 text-[10px] font-black uppercase tracking-widest"><input type="hidden" name="action" value="save"><div class="grid grid-cols-2 gap-4"><input name="site_name" value="{settings['site_name']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="logo_url" value="{settings['logo_url']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><input name="header_notice" value="{settings['header_notice']}" class="w-full bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><div class="grid grid-cols-2 gap-4"><input name="tmdb_key" value="{settings['tmdb_key']}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="bot_token" value="{settings['bot_token']}" placeholder="Bot Token" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><div class="grid grid-cols-2 gap-4"><input name="bot_username" value="{settings['bot_username']}" placeholder="Bot Username" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><input name="channel_id" value="{settings.get('channel_id','')}" placeholder="Channel ID (-100...)" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"></div><div class="grid grid-cols-2 gap-4 bg-blue-600/10 p-4 rounded-2xl border border-blue-500/20"><div class="text-blue-400">Auto Delete (Min):<input name="auto_delete_min" type="number" value="{settings.get('auto_delete_min', 0)}" class="bg-black/50 p-2 rounded-xl mt-1 w-full text-white"></div><div>Restrict Forward:<br><input name="restrict_forward" type="checkbox" {"checked" if settings.get("restrict_forward") else ""} class="mt-3"></div></div><input name="categories" value="{','.join(settings['categories'])}" class="bg-black/50 p-4 rounded-xl border border-white/10 outline-none text-white"><h3 class="text-emerald-500 underline">💸 Ad Management</h3><div class="grid grid-cols-2 gap-4"><textarea name="banner_ad" placeholder="Banner Ad" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('banner_ad','')}</textarea><textarea name="popunder" placeholder="Popunder" class="bg-black/50 p-3 rounded-xl border border-white/10 h-20 text-white">{settings.get('ads',{}).get('popunder','')}</textarea></div><div class="p-6 bg-blue-600/10 rounded-[30px] border border-blue-600/20 mt-4"><input name="admin_user" value="{settings['admin_user']}" class="w-full bg-black/60 p-4 rounded-xl border border-white/10 mb-2 outline-none text-white"><input name="new_pass" type="password" placeholder="New Password" class="w-full bg-black/60 p-4 rounded-xl border border-white/10 outline-none text-white"></div><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg">Save Master Settings</button></form><form method="POST" class="mt-4"><input type="hidden" name="action" value="set_webhook"><button class="w-full bg-emerald-600 py-3 rounded-xl font-black uppercase text-[10px] shadow-lg">🛠️ Auto Set Bot Webhook</button></form></div><div class="bg-slate-900 p-8 rounded-[40px] border border-white/5 shadow-2xl h-[1000px] overflow-y-auto"><h2 class="text-xl font-bold mb-6 uppercase text-emerald-500 text-white">🎬 Manage Movies</h2><form action="/dashboard" method="GET" class="mb-4 flex gap-2"><input name="dq" placeholder="Search title..." class="w-full bg-black/40 p-3 rounded-xl border border-white/10 outline-none text-xs text-white"><button class="bg-blue-600 px-4 rounded-xl font-black text-xs uppercase shadow-lg">Filter</button></form>{movies_list_html}</div></div>"""
+    return render_pro(content, settings)
 
 @app.route('/edit-movie/<id>', methods=['GET', 'POST'])
 def edit_movie(id):
@@ -262,13 +240,11 @@ def edit_movie(id):
             if l and r: new_files.append({"quality": l, "file_ref": r})
         upd = {"title": request.form.get('title'), "year": request.form.get('year'), "rating": request.form.get('rating'), "plot": request.form.get('plot'), "category": request.form.get('category'), "files": new_files}
         movies_col.update_one({"_id": ObjectId(id)}, {"$set": upd})
-        flash("✅ Movie Updated Successfully!")
+        flash("✅ Updated!")
         return redirect('/dashboard')
-    
-    file_inputs_html = "".join([f'<div class="flex gap-2 mb-2"><input name="f_label" value="{f["quality"]}" class="bg-black/50 p-2 rounded-xl border border-white/10 w-1/3 text-white"><input name="f_ref" value="{f["file_ref"]}" class="bg-black/50 p-2 rounded-xl border border-white/10 w-2/3 text-white"></div>' for f in m['files']])
-    
-    content = f"""<div class="max-w-2xl mx-auto bg-slate-900 p-10 rounded-[40px] border border-white/5 shadow-2xl mt-4"><h2 class="text-2xl font-black mb-8 uppercase text-blue-500 text-center">Edit Movie Info 🎬</h2><form method="POST" class="space-y-4 uppercase text-[11px] font-black text-white"><input name="title" value="{m['title']}" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none"><div class="grid grid-cols-2 gap-4"><input name="year" value="{m['year']}" class="bg-black/50 p-4 rounded-2xl border border-white/10"><input name="rating" value="{m['rating']}" class="bg-black/50 p-4 rounded-2xl border border-white/10"></div><input name="category" value="{m['category']}" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10"><textarea name="plot" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 h-48">{m['plot']}</textarea><h3 class="text-emerald-500 underline mt-6 mb-2 uppercase">Edit Download Buttons</h3>{file_inputs_html}<div class="flex gap-2"><input name="f_label" placeholder="New Quality" class="bg-black/50 p-2 rounded-xl border border-white/10 w-1/3"><input name="f_ref" placeholder="New File Ref" class="bg-black/50 p-2 rounded-xl border border-white/10 w-2/3"></div><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg mt-8">Save All Updates</button></form></div>"""
-    return render_site(content, settings)
+    f_in = "".join([f'<div class="flex gap-2 mb-2"><input name="f_label" value="{f["quality"]}" class="bg-black/50 p-2 rounded-xl border border-white/10 w-1/3 text-white"><input name="f_ref" value="{f["file_ref"]}" class="bg-black/50 p-2 rounded-xl border border-white/10 w-2/3 text-white"></div>' for f in m['files']])
+    content = f"""<div class="max-w-2xl mx-auto bg-slate-900 p-10 rounded-[40px] border border-white/5 shadow-2xl mt-4"><h2 class="text-2xl font-black mb-8 uppercase text-blue-500">Edit Movie 🎬</h2><form method="POST" class="space-y-4 font-black uppercase text-[11px] text-white"><input name="title" value="{m['title']}" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 outline-none"><div class="grid grid-cols-2 gap-4"><input name="year" value="{m['year']}" class="bg-black/50 p-4 rounded-2xl border border-white/10"><input name="rating" value="{m['rating']}" class="bg-black/50 p-4 rounded-2xl border border-white/10"></div><input name="category" value="{m['category']}" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10"><textarea name="plot" class="w-full bg-black/50 p-4 rounded-2xl border border-white/10 h-48">{m['plot']}</textarea><h3 class="text-emerald-500 underline mt-6 mb-2">Download Buttons (Quality & Ref ID)</h3>{f_in}<div class="flex gap-2"><input name="f_label" placeholder="New Quality" class="bg-black/50 p-2 rounded-xl border border-white/10 w-1/3"><input name="f_ref" placeholder="New Ref ID" class="bg-black/50 p-2 rounded-xl border border-white/10 w-2/3"></div><button class="w-full bg-blue-600 py-4 rounded-2xl font-black uppercase shadow-lg mt-8">Save All Changes</button></form></div>"""
+    return render_pro(content, settings)
 
 @app.route('/delete/<id>')
 def delete_movie(id):
@@ -277,7 +253,7 @@ def delete_movie(id):
     flash("🗑️ Movie Deleted!")
     return redirect('/dashboard')
 
-# --- Clone System: লিং কপি এবং স্বতন্ত্র ডাটাবেস ---
+# --- Clone System: লিং কপি সহ সম্পূর্ণ স্বতন্ত্র ---
 
 @app.route('/clone-site', methods=['GET', 'POST'])
 def clone_page():
@@ -286,20 +262,10 @@ def clone_page():
         name, db_uri = request.form.get('name'), request.form.get('db_uri')
         site_url = f"https://{request.host}"
         admin_url = f"{site_url}/admin"
-        content = f"""
-        <div class="max-w-xl mx-auto bg-slate-900 p-10 rounded-[50px] border border-emerald-500 shadow-2xl text-center mt-6 text-white uppercase font-black">
-            <h2 class="text-3xl text-emerald-400 mb-6 italic tracking-tighter">🎉 CLONE SUCCESSFUL! 🎉</h2>
-            <div class="space-y-4 text-left">
-                <div class="copy-box"><p class="text-[9px] text-blue-400 font-black">USER SITE URL</p><p id="s_url" class="font-mono text-sm truncate">{site_url}</p><button onclick="copyToClipboard('s_url')" class="bg-blue-600 px-4 py-1 rounded-full text-[10px] mt-2 shadow-xl">COPY URL</button></div>
-                <div class="copy-box"><p class="text-[9px] text-emerald-400 font-black">ADMIN PANEL URL</p><p id="a_url" class="font-mono text-sm truncate">{admin_url}</p><button onclick="copyToClipboard('a_url')" class="bg-emerald-600 px-4 py-1 rounded-full text-[10px] mt-2 shadow-xl">COPY ADMIN</button></div>
-            </div>
-            <p class="mt-6 text-[10px] opacity-60 tracking-widest">Now use the new MongoDB URI in your GitHub Environment variables.</p>
-            <a href="/admin" class="mt-8 inline-block bg-white text-black px-10 py-3 rounded-full text-xs font-bold shadow-2xl">BACK TO HOME</a>
-        </div>"""
-        return render_site(content, settings)
-    
-    content = f"""<div class="max-w-md mx-auto bg-slate-900 p-12 rounded-[50px] border border-emerald-500 shadow-2xl text-center mt-10 text-white"><h2 class="text-3xl font-black mb-6 text-emerald-500 uppercase tracking-tighter italic">Network Cloner 🚀</h2><p class="text-slate-500 text-[10px] mb-8 uppercase font-bold tracking-widest">Generate your dedicated movie network instance.</p><form method="POST" class="space-y-6"><input name="name" placeholder="Desired Site Name" class="w-full bg-black/50 p-5 rounded-3xl border border-white/10 font-bold text-white outline-none text-center shadow-inner"><input name="db_uri" placeholder="Paste NEW MongoDB Atlas URI" class="w-full bg-black/50 p-5 rounded-3xl border border-white/10 text-xs text-white outline-none text-center shadow-inner" required><button class="w-full bg-emerald-600 hover:bg-emerald-700 py-5 rounded-3xl font-black uppercase tracking-widest shadow-2xl">Deploy Standalone Network</button></form></div>"""
-    return render_site(content, settings)
+        content = f"""<div class="max-w-xl mx-auto bg-slate-900 p-10 rounded-[50px] border border-emerald-500 shadow-2xl text-center mt-6 text-white uppercase font-black"><h2 class="text-3xl text-emerald-400 mb-6 italic tracking-tighter">🎉 CLONE SUCCESSFUL! 🎉</h2><div class="space-y-4 text-left"><div class="copy-box"><p class="text-[9px] text-blue-400">USER SITE URL</p><p id="s_url" class="font-mono text-sm truncate">{site_url}</p><button onclick="copyToClipboard('s_url')" class="bg-blue-600 px-4 py-1 rounded-full text-[10px] mt-2">COPY SITE URL</button></div><div class="copy-box"><p class="text-[9px] text-emerald-400">ADMIN PANEL URL</p><p id="a_url" class="font-mono text-sm truncate">{admin_url}</p><button onclick="copyToClipboard('a_url')" class="bg-emerald-600 px-4 py-1 rounded-full text-[10px] mt-2">COPY ADMIN URL</button></div></div><p class="mt-6 text-[10px] opacity-60">Paste this URI in your GitHub Environment variables.</p><a href="/admin" class="mt-8 inline-block bg-white text-black px-10 py-3 rounded-full text-xs font-bold shadow-2xl">BACK TO HOME</a></div>"""
+        return render_pro(content, settings)
+    content = f"""<div class="max-w-md mx-auto bg-slate-900 p-12 rounded-[50px] border border-emerald-500 shadow-2xl text-center mt-10 text-white"><h2 class="text-3xl font-black mb-6 text-emerald-500 uppercase tracking-tighter italic">Network Cloner 🚀</h2><form method="POST" class="space-y-6"><input name="name" placeholder="Desired Site Name" class="w-full bg-black/50 p-5 rounded-3xl border border-white/10 font-bold text-white outline-none text-center shadow-inner"><input name="db_uri" placeholder="Paste New MongoDB Atlas URI" class="w-full bg-black/50 p-5 rounded-3xl border border-white/10 text-xs text-white outline-none text-center shadow-inner" required><button class="w-full bg-emerald-600 hover:bg-emerald-700 py-5 rounded-3xl font-black uppercase tracking-widest shadow-xl transition-all">Launch Standalone Network</button></form></div>"""
+    return render_pro(content, settings)
 
 # --- Telegram Bot Webhook Implementation ---
 
@@ -317,26 +283,24 @@ def webhook():
             file_data = files_col.find_one({"_id": ObjectId(args[1])})
             if file_data:
                 protect = settings.get('restrict_forward', False)
-                # ফাইল পাঠানো
                 sent_msg = bot.send_document(m.chat.id, file_data['file_id'], caption=f"🎬 মুভি: *{file_data['file_name']}*\n\n🔥 Enjoy Your Movie! 🔥", parse_mode="Markdown", protect_content=protect)
-                # অটো ডিলিট টাইমার
                 del_min = settings.get('auto_delete_min', 0)
                 if del_min > 0:
                     threading.Timer(del_min * 60, lambda: (bot.delete_message(m.chat.id, sent_msg.message_id) if bot else None)).start()
                     bot.send_message(m.chat.id, f"⚠️ ফাইলটি {del_min} মিনিট পর অটো ডিলিট হয়ে যাবে।")
             else: bot.send_message(m.chat.id, "❌ Error: File Not Found!")
-        else: bot.send_message(m.chat.id, f"🎬 Welcome! Official File Store for {settings['site_name']}.")
+        else: bot.send_message(m.chat.id, f"🎬 Welcome! I am the File Server for {settings['site_name']}.")
 
     @bot.message_handler(commands=['post'])
     def handle_post(m):
-        query = m.text.replace('/post', '').strip()
-        if not query: return bot.reply_to(m, "Format: `/post Avatar`")
+        q = m.text.replace('/post', '').strip()
+        if not q: return bot.reply_to(m, "Usage: `/post Avatar`")
         try:
-            res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={settings['tmdb_key']}&query={query}").json()
+            res = requests.get(f"https://api.themoviedb.org/3/search/movie?api_key={settings['tmdb_key']}&query={q}").json()
             results = res.get('results', [])[:5]
             markup = telebot.types.InlineKeyboardMarkup()
             for r in results: markup.add(telebot.types.InlineKeyboardButton(f"{r['title']} ({r.get('release_date','')[:4]})", callback_data=f"sel_{r['id']}"))
-            bot.reply_to(m, "🎬 Select Correct Movie:", reply_markup=markup)
+            bot.reply_to(m, "🎬 Select correct movie:", reply_markup=markup)
         except Exception as e: bot.reply_to(m, f"Error: {e}")
 
     @bot.callback_query_handler(func=lambda c: c.data.startswith('sel_'))
@@ -356,25 +320,29 @@ def webhook():
     @bot.callback_query_handler(func=lambda c: c.data.startswith('cat_'))
     def handle_cat(c):
         bot_states.update_one({"user_id": c.from_user.id}, {"$set": {"category": c.data.split('_')[1], "step": "file"}})
-        bot.send_message(c.message.chat.id, "✅ Send Movie Files now. Send /done when finished.")
+        bot.send_message(c.message.chat.id, "✅ Now Send Movie Files. I will forward to your channel automatically. Send /done when finished.")
 
     @bot.message_handler(content_types=['video', 'document', 'audio'])
     def handle_files(m):
         state = bot_states.find_one({"user_id": m.from_user.id})
         if not state or state.get('step') != 'file': return
-        fid = m.video.file_id if m.video else (m.document.file_id if m.document else m.audio.file_id)
-        fname = m.video.file_name if m.video else (m.document.file_name if m.document else "Download")
-        quality = extract_quality(fname)
-        ref_id = files_col.insert_one({"file_id": fid, "file_name": fname}).inserted_id
-        bot_states.update_one({"user_id": m.from_user.id}, {"$push": {"files": {"quality": quality, "file_ref": str(ref_id)}}})
-        bot.reply_to(m, f"📥 {quality} Recorded! Send more or /done.")
+        try:
+            # বট ফাইলটি গ্রহণ করে অ্যাডমিন চ্যানেলে ফরওয়ার্ড করবে
+            fwd = bot.forward_message(settings['channel_id'], m.chat.id, m.message_id)
+            fname = m.video.file_name if m.video else (m.document.file_name if m.document else "Download")
+            qual = extract_quality(fname)
+            # চ্যানেলে থাকা ফাইলের একটি ইউনিক আইডি ডাটাবেসে সেভ হবে
+            ref_id = files_col.insert_one({"file_id": fwd.document.file_id if hasattr(fwd, 'document') else fwd.video.file_id, "file_name": fname, "msg_id": fwd.message_id}).inserted_id
+            bot_states.update_one({"user_id": m.from_user.id}, {"$push": {"files": {"quality": qual, "file_ref": str(ref_id)}}})
+            bot.reply_to(m, f"📥 {qual} Stored in Channel! More or /done?")
+        except Exception as e: bot.reply_to(m, f"Error: {e}. Bot must be Admin in your channel!")
 
     @bot.message_handler(commands=['done'])
     def handle_done(m):
         state = bot_states.find_one({"user_id": m.from_user.id})
         if not state: return
         movies_col.insert_one({**state['info'], "category": state['category'], "files": state['files']})
-        bot.send_message(m.chat.id, "🚀 PUBLISHED LIVE ON WEBSITE! ✅")
+        bot.send_message(m.chat.id, "🚀 MOVIE PUBLISHED LIVE! ✅")
         bot_states.delete_one({"user_id": m.from_user.id})
 
     bot.process_new_updates([update])
