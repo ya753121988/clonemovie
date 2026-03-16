@@ -3,3 +3,7 @@ pymongo
 pyrogram
 tgcrypto
 dnspython
+flask
+pymongo
+pyTelegramBotAPI
+dnspython
