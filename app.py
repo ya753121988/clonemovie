@@ -1,183 +1,188 @@
 import os
 import requests
-from flask import Flask, render_template_string, request, jsonify
+from flask import Flask, render_template_string, request, redirect, url_for
 from pymongo import MongoClient
 
 app = Flask(__name__)
 
 # --- কনফিগারেশন ---
 MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
-TMDB_API_KEY = "275aff9f1c570308fa10d14c6f49f998"  # <-- আপনার TMDB API Key এখানে বসান
-IMG_URL = "https://image.tmdb.org/t/p/original"
+TMDB_API_KEY = "275aff9f1c570308fa10d14c6f49f998"  # <-- আপনার TMDB API Key এখানে দিন
+IMG_URL = "https://image.tmdb.org/t/p/w500"
+ORIGINAL_IMG = "https://image.tmdb.org/t/p/original"
 
-# মঙ্গোডিবি কানেকশন
 client = MongoClient(MONGO_URI)
 db = client['media_database']
 collection = db['all_content']
 
-# --- এইচটিএমএল ডিজাইন (ইউজার ইন্টারফেস) ---
+# --- এইচটিএমএল ডিজাইন (হোম পেজ + কার্ড ডিজাইন) ---
 HTML_TEMPLATE = '''
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TMDB Ultimate Auto Poster</title>
+    <title>Movie & TV Database</title>
     <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .movie-card:hover .overlay { opacity: 1; }
+        ::-webkit-scrollbar { width: 8px; }
+        ::-webkit-scrollbar-thumb { background: #ef4444; border-radius: 10px; }
+    </style>
 </head>
-<body class="bg-slate-900 text-white font-sans min-h-screen">
-    <div class="container mx-auto py-10 px-4">
-        <header class="text-center mb-12">
-            <h1 class="text-4xl font-bold text-red-500 mb-2">TMDB MEGA SYNCER</h1>
-            <p class="text-slate-400">মুভি, টিভি শো এবং ইপিসোডের সব তথ্য এক ক্লিকে সেভ করুন</p>
-        </header>
-
-        <div class="max-w-2xl mx-auto bg-slate-800 p-8 rounded-xl shadow-2xl border border-slate-700">
-            <form action="/sync" method="POST" class="space-y-6">
-                <div>
-                    <label class="block text-sm font-medium mb-2">TMDB ID দিন</label>
-                    <input type="text" name="tmdb_id" placeholder="যেমন: 550 (Fight Club)" required 
-                           class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 focus:ring-2 focus:ring-red-500 outline-none">
-                </div>
-                
-                <div>
-                    <label class="block text-sm font-medium mb-2">টাইপ সিলেক্ট করুন</label>
-                    <select name="type" class="w-full bg-slate-700 border border-slate-600 rounded-lg px-4 py-2 outline-none">
-                        <option value="movie">Movie</option>
-                        <option value="tv">TV Show (সব সিজন ও ইপিসোড সহ)</option>
-                    </select>
-                </div>
-
-                <button type="submit" class="w-full bg-red-600 hover:bg-red-700 text-white font-bold py-3 rounded-lg transition duration-300">
-                    তথ্য সংগ্রহ এবং সেভ করুন
-                </button>
-            </form>
-            
-            {% if message %}
-            <div class="mt-6 p-4 bg-green-900/50 border border-green-500 text-green-200 rounded-lg text-center">
-                {{ message }}
+<body class="bg-black text-white font-sans min-h-screen">
+    
+    <!-- নেভিগেশন বার -->
+    <nav class="bg-zinc-900 p-4 border-b border-zinc-800 sticky top-0 z-50">
+        <div class="container mx-auto flex justify-between items-center">
+            <h1 class="text-2xl font-extrabold text-red-600 tracking-tighter">MOVIE-DB</h1>
+            <div class="flex gap-4">
+                <a href="/" class="hover:text-red-500 font-medium">Home</a>
+                <button onclick="document.getElementById('sync-modal').style.display='flex'" class="bg-red-600 px-4 py-1 rounded text-sm font-bold">Add New</button>
             </div>
-            {% endif %}
         </div>
+    </nav>
 
-        <div class="mt-12 text-center text-slate-500 text-sm">
-            ডেটাবেস: <span class="text-green-500">Connected</span> | 
-            সোর্স: <span class="text-blue-400">TMDB API</span>
+    <!-- ডাটা সেভ করার পপ-আপ ফর্ম -->
+    <div id="sync-modal" class="fixed inset-0 bg-black/80 hidden items-center justify-center z-[100] px-4">
+        <div class="bg-zinc-900 p-6 rounded-xl border border-zinc-700 w-full max-w-md">
+            <h2 class="text-xl font-bold mb-4">Sync from TMDB</h2>
+            <form action="/sync" method="POST" class="space-y-4">
+                <input type="text" name="tmdb_id" placeholder="Enter TMDB ID" required class="w-full bg-zinc-800 p-3 rounded border border-zinc-600">
+                <select name="type" class="w-full bg-zinc-800 p-3 rounded border border-zinc-600">
+                    <option value="movie">Movie</option>
+                    <option value="tv">TV Show</option>
+                </select>
+                <div class="flex gap-2">
+                    <button type="submit" class="flex-1 bg-red-600 py-2 rounded font-bold">Sync Now</button>
+                    <button type="button" onclick="document.getElementById('sync-modal').style.display='none'" class="flex-1 bg-zinc-700 py-2 rounded">Close</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <div class="container mx-auto py-10 px-4">
+        <h2 class="text-3xl font-bold mb-8 border-l-4 border-red-600 pl-4">Recently Synced</h2>
+        
+        <!-- মুভি গ্রিড -->
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-8">
+            {% for item in items %}
+            <div class="bg-zinc-900 rounded-xl overflow-hidden border border-zinc-800 shadow-2xl">
+                <!-- মেইন পোস্টার -->
+                <div class="relative group">
+                    <img src="{{ item.main_poster }}" class="w-full h-[450px] object-cover" alt="Poster">
+                    <div class="absolute top-2 right-2 bg-black/70 px-2 py-1 rounded text-yellow-500 font-bold">⭐ {{ item.rating }}</div>
+                </div>
+
+                <div class="p-5">
+                    <h3 class="text-xl font-bold text-red-500 mb-1">{{ item.title }} ({{ item.year }})</h3>
+                    <p class="text-zinc-400 text-sm line-clamp-2 mb-4">{{ item.summary }}</p>
+                    
+                    <div class="space-y-2 text-sm text-zinc-300">
+                        <p><strong>Director:</strong> {{ item.director }}</p>
+                        <p><strong>Hero:</strong> {{ item.hero }} | <strong>Heroine:</strong> {{ item.heroine }}</p>
+                        <p><strong>Language:</strong> {{ item.language | upper }}</p>
+                    </div>
+
+                    <!-- সব ছবির স্লাইডার (ছোট করে) -->
+                    <div class="mt-4">
+                        <p class="text-xs font-bold mb-2 uppercase text-zinc-500">More Images</p>
+                        <div class="flex gap-2 overflow-x-auto pb-2">
+                            {% for p in item.all_posters[:5] %}
+                                <img src="{{ p }}" class="w-16 h-24 object-cover rounded border border-zinc-700">
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    <!-- সব অ্যাক্টরের ছবি -->
+                    <div class="mt-4">
+                        <p class="text-xs font-bold mb-2 uppercase text-zinc-500">Cast</p>
+                        <div class="flex gap-2 overflow-x-auto pb-2">
+                            {% for actor in item.cast_details[:6] %}
+                                <div class="text-center min-w-[60px]">
+                                    <img src="{{ actor.photo }}" class="w-12 h-12 rounded-full mx-auto object-cover border border-red-600">
+                                    <p class="text-[10px] mt-1 truncate w-14">{{ actor.name }}</p>
+                                </div>
+                            {% endfor %}
+                        </div>
+                    </div>
+
+                    {% if item.trailer != "N/A" %}
+                    <a href="{{ item.trailer }}" target="_blank" class="block mt-6 text-center bg-zinc-800 hover:bg-zinc-700 py-2 rounded-lg font-bold text-sm transition">Watch Trailer</a>
+                    {% endif %}
+                </div>
+            </div>
+            {% endfor %}
         </div>
     </div>
 </body>
 </html>
 '''
 
+# --- আগের সব ফাংশন (সেম থাকবে) ---
 def get_images(tmdb_id, media_type):
-    """মুভি বা টিভি শোর সব পোস্টার এবং থাম্বনেইল আনে"""
     url = f"https://api.themoviedb.org/3/{media_type}/{tmdb_id}/images?api_key={TMDB_API_KEY}"
     res = requests.get(url).json()
-    posters = [IMG_URL + i['file_path'] for i in res.get('posters', [])]
-    backdrops = [IMG_URL + i['file_path'] for i in res.get('backdrops', [])]
+    posters = [ORIGINAL_IMG + i['file_path'] for i in res.get('posters', [])]
+    backdrops = [ORIGINAL_IMG + i['file_path'] for i in res.get('backdrops', [])]
     return posters, backdrops
 
 def get_cast_details(credits):
-    """সব অভিনেতার ছবি, নাম এবং রোল সংগ্রহ করে"""
     cast_list = []
     for person in credits.get('cast', []):
-        cast_list.append({
-            "name": person.get('name'),
-            "character": person.get('character'),
-            "photo": (IMG_URL + person['profile_path']) if person.get('profile_path') else None,
-            "gender": "Female" if person.get('gender') == 1 else "Male"
-        })
+        if person.get('profile_path'): # শুধু ছবি আছে এমন অ্যাক্টরদের নিবে
+            cast_list.append({
+                "name": person.get('name'),
+                "photo": IMG_URL + person['profile_path'],
+                "gender": "Female" if person.get('gender') == 1 else "Male"
+            })
     return cast_list
-
-def get_episodes(tv_id, seasons):
-    """টিভি শোর প্রতিটা সিজনের প্রতিটা ইপিসোড ডিটেইলস আনে"""
-    full_seasons = []
-    for s in seasons:
-        s_num = s['season_number']
-        url = f"https://api.themoviedb.org/3/tv/{tv_id}/season/{s_num}?api_key={TMDB_API_KEY}"
-        s_data = requests.get(url).json()
-        episodes = []
-        for ep in s_data.get('episodes', []):
-            ep_data = {
-                "episode_number": ep.get('episode_number'),
-                "name": ep.get('name'),
-                "summary": ep.get('overview'),
-                "air_date": ep.get('air_date'),
-                "rating": ep.get('vote_average'),
-                "still_path": (IMG_URL + ep['still_path']) if ep.get('still_path') else None
-            }
-            episodes.append(ep_data)
-        full_seasons.append({
-            "season_name": s.get('name'),
-            "season_number": s_num,
-            "episodes": episodes
-        })
-    return full_seasons
 
 @app.route('/')
 def index():
-    return render_template_string(HTML_TEMPLATE)
+    # ডাটাবেস থেকে সব ডাটা নিয়ে এসে হোম পেজে পাঠানো
+    items = list(collection.find().sort('_id', -1))
+    return render_template_string(HTML_TEMPLATE, items=items)
 
 @app.route('/sync', methods=['POST'])
 def sync():
     tmdb_id = request.form.get('tmdb_id')
     m_type = request.form.get('type')
-
-    # ১. মেইন ডিটেইলস এবং ক্রেডিট আনা
+    
     base_url = f"https://api.themoviedb.org/3/{m_type}/{tmdb_id}?api_key={TMDB_API_KEY}&append_to_response=credits,videos"
     data = requests.get(base_url).json()
 
-    if 'id' not in data:
-        return render_template_string(HTML_TEMPLATE, message="ভুল TMDB ID দেওয়া হয়েছে!")
+    if 'id' in data:
+        all_posters, all_backdrops = get_images(tmdb_id, m_type)
+        actors = get_cast_details(data.get('credits', {}))
+        director = next((p['name'] for p in data.get('credits', {}).get('crew', []) if p['job'] == 'Director'), "N/A")
+        hero = next((a['name'] for a in actors if a['gender'] == "Male"), "N/A")
+        heroine = next((a['name'] for a in actors if a['gender'] == "Female"), "N/A")
+        
+        trailer = "N/A"
+        for v in data.get('videos', {}).get('results', []):
+            if v['type'] == 'Trailer':
+                trailer = f"https://www.youtube.com/watch?v={v['key']}"
+                break
 
-    # ২. সব ইমেজ সংগ্রহ
-    all_posters, all_backdrops = get_images(tmdb_id, m_type)
+        final_post = {
+            "tmdb_id": tmdb_id,
+            "title": data.get('title') or data.get('name'),
+            "year": (data.get('release_date') or data.get('first_air_date', "0000"))[:4],
+            "rating": data.get('vote_average'),
+            "summary": data.get('overview'),
+            "director": director,
+            "hero": hero,
+            "heroine": heroine,
+            "language": data.get('original_language'),
+            "trailer": trailer,
+            "main_poster": ORIGINAL_IMG + data.get('poster_path'),
+            "all_posters": all_posters,
+            "cast_details": actors
+        }
+        collection.update_one({"tmdb_id": tmdb_id}, {"$set": final_post}, upsert=True)
 
-    # ৩. অ্যাক্টর এবং ডিরেক্টর তথ্য
-    actors = get_cast_details(data.get('credits', {}))
-    director = next((p['name'] for p in data.get('credits', {}).get('crew', []) if p['job'] == 'Director'), "N/A")
-    
-    # নায়ক/নায়িকা আলাদা করা (অ্যাক্টর লিস্টের প্রথম দুই জন যারা জেন্ডার অনুযায়ী)
-    hero = next((a['name'] for a in actors if a['gender'] == "Male"), "N/A")
-    heroine = next((a['name'] for a in actors if a['gender'] == "Female"), "N/A")
-
-    # ৪. ট্রেলার
-    trailer = "N/A"
-    for v in data.get('videos', {}).get('results', []):
-        if v['type'] == 'Trailer' and v['site'] == 'YouTube':
-            trailer = f"https://www.youtube.com/watch?v={v['key']}"
-            break
-
-    # ৫. টিভি শোর ক্ষেত্রে ইপিসোড ডাটা
-    seasons_data = []
-    if m_type == 'tv':
-        seasons_data = get_episodes(tmdb_id, data.get('seasons', []))
-
-    # চূড়ান্ত ডাটা অবজেক্ট
-    final_post = {
-        "tmdb_id": tmdb_id,
-        "type": m_type,
-        "title": data.get('title') or data.get('name'),
-        "year": (data.get('release_date') or data.get('first_air_date', "0000"))[:4],
-        "language": data.get('original_language'),
-        "rating": data.get('vote_average'),
-        "release_date": data.get('release_date') or data.get('first_air_date'),
-        "summary": data.get('overview'),
-        "director": director,
-        "hero": hero,
-        "heroine": heroine,
-        "trailer": trailer,
-        "main_poster": IMG_URL + data.get('poster_path') if data.get('poster_path') else None,
-        "all_posters": all_posters,
-        "all_thumbnails": all_backdrops,
-        "cast_details": actors,
-        "seasons_episodes": seasons_data # মুভি হলে এটি খালি থাকবে
-    }
-
-    # ডাটাবেসে সেভ (থাকলে আপডেট, না থাকলে নতুন সেভ)
-    collection.update_one({"tmdb_id": tmdb_id}, {"$set": final_post}, upsert=True)
-
-    return render_template_string(HTML_TEMPLATE, message=f"সফলভাবে '{final_post['title']}' এর সব তথ্য সেভ করা হয়েছে!")
+    return redirect(url_for('index'))
 
 if __name__ == '__main__':
     app.run(debug=True)
