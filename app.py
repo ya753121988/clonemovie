@@ -11,91 +11,81 @@ client = MongoClient(MONGO_URI)
 db = client['LudoRealDB']
 rooms = db['rooms']
 
-# --- HTML/CSS/JS (Complete Logic) ---
+# --- HTML, CSS, JavaScript (Frontend) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html>
+<html lang="bn">
 <head>
-    <title>Real Premium Ludo</title>
+    <meta charset="UTF-8">
+    <title>Premium Ludo Online - Full Game</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        :root {
-            --red: #ff4d4d; --green: #2ecc71; --yellow: #f1c40f; --blue: #3498db;
-        }
-        body { font-family: sans-serif; background: #2c3e50; display: flex; justify-content: center; align-items: center; min-height: 100vh; margin: 0; color: white;}
+        :root { --red: #ff3838; --green: #32ff7e; --yellow: #fff200; --blue: #18dcff; --bg: #2f3640; }
+        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; background: var(--bg); color: white; margin: 0; display: flex; flex-direction: column; align-items: center; }
         
-        /* Ludo Board Layout */
-        #ludo-container { position: relative; width: 450px; height: 450px; background: white; border: 5px solid #333; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(15, 1fr); }
+        /* Ludo Board Design */
+        #game-container { position: relative; width: 360px; height: 360px; background: white; border: 10px solid #333; display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(15, 1fr); box-shadow: 0 10px 30px rgba(0,0,0,0.5); margin-top: 20px; }
+        .cell { border: 0.1px solid #ddd; position: relative; }
         
-        .cell { border: 0.5px solid #ccc; box-sizing: border-box; position: relative; }
-        
-        /* Houses */
-        .house { grid-column: span 6; grid-row: span 6; position: relative; border: 2px solid #333; }
-        .red-h { background: var(--red); grid-area: 1 / 1 / 7 / 7; }
-        .green-h { background: var(--green); grid-area: 1 / 10 / 7 / 16; }
-        .blue-h { background: var(--blue); grid-area: 10 / 1 / 16 / 7; }
-        .yellow-h { background: var(--yellow); grid-area: 10 / 10 / 16 / 16; }
-
-        .white-inner { position: absolute; top: 15%; left: 15%; width: 70%; height: 70%; background: white; border-radius: 10px; display: grid; grid-template-columns: 1fr 1fr; grid-template-rows: 1fr 1fr; }
-        
-        /* Path coloring */
-        .r-path { background: var(--red); } .g-path { background: var(--green); }
-        .b-path { background: var(--blue); } .y-path { background: var(--yellow); }
-        .safe { background: #bdc3c7 !important; }
+        /* Homes */
+        .home { grid-column: span 6; grid-row: span 6; position: relative; border: 1px solid #333; }
+        .red-home { background: var(--red); grid-area: 1/1/7/7; }
+        .green-home { background: var(--green); grid-area: 1/10/7/16; }
+        .blue-home { background: var(--blue); grid-area: 10/1/16/7; }
+        .yellow-home { background: var(--yellow); grid-area: 10/10/16/16; }
+        .center-finish { grid-area: 7/7/10/10; background: conic-gradient(var(--red) 0 90deg, var(--green) 0 180deg, var(--yellow) 0 270deg, var(--blue) 0 360deg); }
 
         /* Pawns (গুটি) */
-        .pawn { width: 22px; height: 22px; border-radius: 50%; border: 2px solid #000; position: absolute; z-index: 100; cursor: pointer; transition: 0.3s; box-shadow: 0 2px 5px rgba(0,0,0,0.5); }
-        .p-red { background: var(--red); } .p-green { background: var(--green); }
-        .p-blue { background: var(--blue); } .p-yellow { background: var(--yellow); }
+        .pawn { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #000; position: absolute; z-index: 100; transition: all 0.4s; cursor: pointer; box-shadow: 0 2px 4px rgba(0,0,0,0.4); }
+        .pawn-red { background: var(--red); } .pawn-green { background: var(--green); }
+        .pawn-blue { background: var(--blue); } .pawn-yellow { background: var(--yellow); }
 
-        .center { grid-area: 7 / 7 / 10 / 10; background: conic-gradient(var(--red) 0 90deg, var(--green) 0 180deg, var(--yellow) 0 270deg, var(--blue) 0 360deg); }
-
-        /* UI Controls */
-        .controls { padding: 20px; text-align: center; }
-        #dice { width: 60px; height: 60px; background: white; color: #333; border-radius: 10px; display: inline-flex; align-items: center; justify-content: center; font-size: 30px; font-weight: bold; border: 4px solid #95a5a6; cursor: pointer; }
-        .setup-box { background: #34495e; padding: 20px; border-radius: 15px; text-align: center; }
-        .btn { background: var(--green); color: white; border: none; padding: 10px 20px; border-radius: 5px; cursor: pointer; font-weight: bold; }
+        /* UI Elements */
+        #controls { margin-top: 20px; text-align: center; background: #fff; color: #333; padding: 15px; border-radius: 10px; width: 340px; }
+        #dice { width: 50px; height: 50px; border: 3px solid #333; border-radius: 8px; font-size: 24px; font-weight: bold; display: inline-flex; align-items: center; justify-content: center; cursor: pointer; background: #f1c40f; }
+        .btn { padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-weight: bold; margin: 5px; }
+        .setup-screen { position: fixed; inset: 0; background: var(--bg); z-index: 1000; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+        .path-red { background: var(--red); opacity: 0.6; } .path-green { background: var(--green); opacity: 0.6; }
     </style>
 </head>
 <body>
 
-<div id="setup" class="setup-box">
-    <h2>Ludo Premium Multiplayer</h2>
-    <input type="text" id="pName" placeholder="আপনার নাম"><br><br>
-    <select id="mode">
-        <option value="robot">🤖 বনাম রোবট</option>
-        <option value="1v1">👥 ১ বনাম ১</option>
-        <option value="4way">👨‍👩‍👧‍👦 ৪ জন প্লেয়ার</option>
-    </select><br><br>
-    <button class="btn" onclick="createGame()">গেম শুরু করুন</button>
+<div id="setup-screen" class="setup-screen">
+    <h1 style="color:var(--yellow)">Premium Ludo Online</h1>
+    <input type="text" id="playerName" placeholder="আপনার নাম" style="padding:10px; border-radius:5px; width:250px;"><br>
+    <select id="gameMode" style="padding:10px; width:270px; margin-top:10px;">
+        <option value="robot">🤖 খেলুন রোবট এর সাথে</option>
+        <option value="1v1">👥 ১ বনাম ১ (অনলাইন)</option>
+        <option value="2v2">👨‍👩‍👦‍👦 ২ বনাম ২ (অনলাইন)</option>
+        <option value="4way">👨‍👩‍👧‍👦 ৪ জন (All vs All)</option>
+    </select><br>
+    <button class="btn" style="background:var(--green); color:#000;" onclick="startGame()">গেম শুরু করুন</button>
 </div>
 
-<div id="game-ui" style="display:none">
-    <div id="ludo-container">
-        <!-- Houses -->
-        <div class="house red-h"><div class="white-inner" id="h-red"></div></div>
-        <div class="house green-h"><div class="white-inner" id="h-green"></div></div>
-        <div class="house blue-h"><div class="white-inner" id="h-blue"></div></div>
-        <div class="house yellow-h"><div class="white-inner" id="h-yellow"></div></div>
-        <div class="center"></div>
-        
-        <!-- Cells will be auto-generated -->
+<div id="game-ui" style="display:none;">
+    <div id="game-container">
+        <!-- Homes -->
+        <div class="home red-home"></div><div class="home green-home"></div>
+        <div class="home blue-home"></div><div class="home yellow-home"></div>
+        <div class="center-finish"></div>
+        <!-- Cells (63 common cells) -->
+        <div id="cells-container"></div>
     </div>
 
-    <div class="controls">
-        <h3 id="status">টার্ন: লালের (Red)</h3>
-        <div id="dice" onclick="roll()">🎲</div>
-        <p>রুম আইডি: <span id="r-id" style="color:var(--yellow)"></span></p>
+    <div id="controls">
+        <h3 id="turn-info" style="margin:0 0 10px 0;">টার্ন: লাল</h3>
+        <div id="dice" onclick="rollDice()">🎲</div>
+        <p>রুম আইডি: <span id="room-display" style="font-weight:bold; color:var(--red);"></span></p>
+        <button class="btn" style="background:#e74c3c; color:white;" onclick="location.reload()">গেম থেকে বের হন</button>
     </div>
 </div>
 
 <script>
-    let roomId, myId, myColor, turn = 'red';
-    let boardMap = {}; // ঘরগুলোর লোকেশন
+    let roomId = null; let myColor = 'red'; let turn = 'red'; let myId = null;
 
-    async function createGame() {
-        const name = document.getElementById('pName').value || "Player";
-        const mode = document.getElementById('mode').value;
+    async function startGame() {
+        const name = document.getElementById('playerName').value || "খেলোয়াড়";
+        const mode = document.getElementById('gameMode').value;
         const res = await fetch('/create', {
             method: 'POST',
             headers: {'Content-Type': 'application/json'},
@@ -103,56 +93,34 @@ HTML_TEMPLATE = """
         });
         const data = await res.json();
         roomId = data.room_id; myId = data.player_id; myColor = data.color;
-        startUI();
+        initBoardUI();
     }
 
-    function startUI() {
-        document.getElementById('setup').style.display = 'none';
+    function initBoardUI() {
+        document.getElementById('setup-screen').style.display = 'none';
         document.getElementById('game-ui').style.display = 'block';
-        document.getElementById('r-id').innerText = roomId;
-        generateBoard();
-        setInterval(updateState, 2000);
+        document.getElementById('room-display').innerText = roomId;
+        createPawns();
+        setInterval(refreshState, 2000);
     }
 
-    function generateBoard() {
-        const container = document.getElementById('ludo-container');
-        // Path cells generate (This is a simplified grid for demo)
-        for(let r=1; r<=15; r++){
-            for(let c=1; c<=15; c++){
-                if((r>6 && r<10) || (c>6 && c<10)) {
-                    if(!((r>6 && r<10) && (c>6 && c<10))) {
-                        let cell = document.createElement('div');
-                        cell.className = 'cell';
-                        cell.id = `cell-${r}-${c}`;
-                        // Color start positions
-                        if(r==8 && c<=6 && c>1) cell.classList.add('r-path');
-                        if(r==8 && c>=10 && c<15) cell.classList.add('y-path');
-                        container.appendChild(cell);
-                    }
-                }
+    function createPawns() {
+        const board = document.getElementById('game-container');
+        const colors = ['red', 'green', 'blue', 'yellow'];
+        colors.forEach(color => {
+            for(let i=1; i<=4; i++) {
+                const p = document.createElement('div');
+                p.className = `pawn pawn-${color}`;
+                p.id = `pawn-${color}-${i}`;
+                // শুরুর পজিশন (Home)
+                p.style.left = (color === 'red' || color === 'blue') ? "15%" : "70%";
+                p.style.top = (color === 'red' || color === 'green') ? "15%" : "70%";
+                board.appendChild(p);
             }
-        }
-        renderPawns();
+        });
     }
 
-    function renderPawns() {
-        // Red Pawns
-        for(let i=0; i<4; i++) {
-            let p = document.createElement('div');
-            p.className = 'pawn p-red';
-            p.id = `pawn-red-${i}`;
-            document.getElementById('h-red').appendChild(p);
-        }
-        // Blue Pawns
-        for(let i=0; i<4; i++) {
-            let p = document.createElement('div');
-            p.className = 'pawn p-blue';
-            p.id = `pawn-blue-${i}`;
-            document.getElementById('h-blue').appendChild(p);
-        }
-    }
-
-    async function roll() {
+    async function rollDice() {
         if(turn !== myColor) return alert("আপনার চালের জন্য অপেক্ষা করুন!");
         const res = await fetch('/roll', {
             method: 'POST',
@@ -161,20 +129,19 @@ HTML_TEMPLATE = """
         });
         const data = await res.json();
         document.getElementById('dice').innerText = data.roll;
-        updateState();
+        refreshState();
     }
 
-    async function updateState() {
+    async function refreshState() {
         if(!roomId) return;
         const res = await fetch(`/state?room_id=${roomId}`);
         const data = await res.json();
         turn = data.turn_color;
-        document.getElementById('status').innerText = "টার্ন: " + turn.toUpperCase();
-        document.getElementById('status').style.color = "var(--"+turn+")";
+        document.getElementById('turn-info').innerText = "টার্ন: " + turn.toUpperCase();
+        document.getElementById('turn-info').style.color = "var(--"+turn+")";
         
-        // Robot Logic
         if(data.mode === 'robot' && turn === 'blue') {
-            await fetch('/roll_robot', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({room_id:roomId})});
+            await fetch('/roll_robot', {method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({room_id: roomId})});
         }
     }
 </script>
@@ -182,7 +149,7 @@ HTML_TEMPLATE = """
 </html>
 """
 
-# --- Backend Routes ---
+# --- Backend API Routes ---
 
 @app.route('/')
 def home():
@@ -192,15 +159,17 @@ def home():
 def create():
     data = request.json
     r_id = str(uuid.uuid4())[:6].upper()
-    players = [{"id": "p1", "name": data['name'], "color": "red"}]
-    if data['mode'] == 'robot':
-        players.append({"id": "robot", "name": "Robot", "color": "blue"})
+    mode = data.get('mode', 'robot')
     
-    room = {
-        "room_id": r_id, "mode": data['mode'], "players": players,
-        "turn": 0, "turn_color": "red", "last_roll": 1, "status": "active"
+    players = [{"id": "p1", "name": data['name'], "color": "red"}]
+    if mode == 'robot':
+        players.append({"id": "robot", "name": "Robot AI", "color": "blue"})
+    
+    room_data = {
+        "room_id": r_id, "mode": mode, "players": players,
+        "turn": 0, "turn_color": "red", "last_roll": 0
     }
-    rooms.insert_one(room)
+    rooms.insert_one(room_data)
     return jsonify({"room_id": r_id, "player_id": "p1", "color": "red"})
 
 @app.route('/state', methods=['GET'])
@@ -215,8 +184,9 @@ def roll():
     room = rooms.find_one({"room_id": data['room_id']})
     roll_val = random.randint(1, 6)
     
-    # Switch Turn
-    next_idx = (room['turn'] + 1) % len(room['players']) if roll_val != 6 else room['turn']
+    p_len = len(room['players'])
+    curr_idx = room['turn']
+    next_idx = (curr_idx + 1) % p_len if roll_val != 6 else curr_idx
     
     rooms.update_one({"room_id": data['room_id']}, {
         "$set": {"last_roll": roll_val, "turn": next_idx, "turn_color": room['players'][next_idx]['color']}
@@ -225,9 +195,11 @@ def roll():
 
 @app.route('/roll_robot', methods=['POST'])
 def roll_robot():
-    r_id = request.json['room_id']
+    data = request.json
     roll_val = random.randint(1, 6)
-    rooms.update_one({"room_id": r_id}, {"$set": {"last_roll": roll_val, "turn": 0, "turn_color": "red"}})
+    rooms.update_one({"room_id": data['room_id']}, {
+        "$set": {"last_roll": roll_val, "turn": 0, "turn_color": "red"}
+    })
     return jsonify({"roll": roll_val})
 
 if __name__ == '__main__':
