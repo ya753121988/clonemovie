@@ -13,7 +13,7 @@ IMG_BASE = "https://image.tmdb.org/t/p/w500"
 IMG_ORIG = "https://image.tmdb.org/t/p/original"
 ADMIN_PW = "admin123"
 
-# ডাটাবেস কানেকশন (Fixed DB Name to avoid 100 DB limit)
+# ডাটাবেস কানেকশন
 client = MongoClient(MONGO_URI)
 db = client['AbsoluteCinema_DB']
 collection = db['media_hub']
@@ -48,49 +48,94 @@ BASE_HEAD = """
         ::-webkit-scrollbar { width: 5px; }
         ::-webkit-scrollbar-thumb { background: #e11d48; border-radius: 10px; }
         .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.95); z-index: 1000; align-items: center; justify-content: center; padding: 20px; }
+        .card-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1.5rem; }
+        @media (min-width: 640px) { .card-grid { grid-template-columns: repeat(3, 1fr); } }
+        @media (min-width: 768px) { .card-grid { grid-template-columns: repeat(4, 1fr); } }
+        @media (min-width: 1024px) { .card-grid { grid-template-columns: repeat(6, 1fr); } }
     </style>
 </head>
 <body>
 """
 
-# --- ১. হোম পেজ ---
+CARD_HTML = """
+<a href="/details/{{ m.tmdb_id }}" class="m-card bg-zinc-900 rounded-[2rem] overflow-hidden border border-zinc-800 block group relative shadow-2xl">
+    <div class="aspect-[2/3] overflow-hidden relative">
+        <img src="{{ m.poster }}" class="w-full h-full object-cover">
+        <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
+            <i class="fa-solid fa-play-circle text-5xl"></i>
+        </div>
+        <div class="absolute top-2 right-2 bg-rose-600 text-[9px] font-black px-2 py-1 rounded-full shadow-lg text-white">⭐ {{ m.rating }}</div>
+    </div>
+    <div class="p-4">
+        <h3 class="font-bold text-xs truncate uppercase text-zinc-200">{{ m.title }}</h3>
+        <p class="text-[9px] text-zinc-500 font-bold mt-1 uppercase tracking-widest">{{ m.year }} | {{ m.type }}</p>
+    </div>
+</a>
+"""
+
+# --- ১. হোম পেজ (ক্যাটাগরি ভিত্তিক) ---
 @app.route('/')
 def home():
     q = request.args.get('q')
-    items = list(collection.find({"title": {"$regex": q, "$options": "i"}}).sort('_id', -1)) if q else list(collection.find().sort('_id', -1))
-    
-    body = NAV_HTML + """
-    <main class="container mx-auto py-10 px-4">
-        {% if not items %}
-        <div class="h-[60vh] flex flex-col items-center justify-center text-zinc-500">
-            <i class="fa fa-database text-6xl mb-4 text-zinc-800"></i>
-            <h2 class="text-2xl font-bold uppercase">ডাটাবেস খালি!</h2>
-            <p class="mt-2">এডমিন প্যানেলে গিয়ে 'Bulk Sync' বাটনে ক্লিক করুন।</p>
-        </div>
-        {% else %}
-        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-6">
-            {% for m in items %}
-            <a href="/details/{{ m.tmdb_id }}" class="m-card bg-zinc-900 rounded-[2rem] overflow-hidden border border-zinc-800 block group relative shadow-2xl">
-                <div class="aspect-[2/3] overflow-hidden relative">
-                    <img src="{{ m.poster }}" class="w-full h-full object-cover">
-                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
-                        <i class="fa-solid fa-play-circle text-5xl"></i>
-                    </div>
-                    <div class="absolute top-2 right-2 bg-rose-600 text-[9px] font-black px-2 py-1 rounded-full shadow-lg text-white">⭐ {{ m.rating }}</div>
-                </div>
-                <div class="p-4">
-                    <h3 class="font-bold text-xs truncate uppercase text-zinc-200">{{ m.title }}</h3>
-                    <p class="text-[9px] text-zinc-500 font-bold mt-1 uppercase tracking-widest">{{ m.year }} | {{ m.type }}</p>
-                </div>
-            </a>
-            {% endfor %}
-        </div>
-        {% endif %}
-    </main>
-    """
-    return render_template_string(BASE_HEAD + body + "</body></html>", items=items)
+    if q:
+        items = list(collection.find({"title": {"$regex": q, "$options": "i"}}).sort('release_date', -1))
+        body = NAV_HTML + f'<main class="container mx-auto py-10 px-4"><h2 class="text-2xl font-black mb-6 italic border-l-4 border-rose-600 pl-4">SEARCH RESULTS: {q}</h2><div class="card-grid">'
+        for m in items:
+            body += render_template_string(CARD_HTML, m=m)
+        body += '</div></main>'
+        return render_template_string(BASE_HEAD + body + "</body></html>")
 
-# --- ২. ডিটেইল পেজ (ইউটিউব ট্রেলার এমবেড সহ) ---
+    # Fetch Categorized Data (Sorted by Release Date)
+    anime = list(collection.find({"category": "Animation", "language": "ja"}).sort('release_date', -1).limit(10))
+    movies = list(collection.find({"type": "movie", "category": {"$ne": "Animation"}}).sort('release_date', -1).limit(10))
+    tv_shows = list(collection.find({"type": "tv", "category": {"$ne": "Animation"}}).sort('release_date', -1).limit(10))
+
+    sections = [
+        {"title": "Latest Movies", "items": movies, "link": "/category/movie"},
+        {"title": "TV Series", "items": tv_shows, "link": "/category/tv"},
+        {"title": "Latest Anime", "items": anime, "link": "/category/anime"}
+    ]
+
+    body = NAV_HTML + '<main class="container mx-auto py-10 px-4 space-y-16">'
+    for sec in sections:
+        if sec['items']:
+            body += f'''
+            <section>
+                <div class="flex justify-between items-end mb-8">
+                    <h2 class="text-2xl md:text-3xl font-black italic uppercase border-l-4 border-rose-600 pl-4 tracking-tighter">{sec['title']}</h2>
+                    <a href="{sec['link']}" class="text-rose-600 font-bold text-xs hover:underline">SEE ALL <i class="fa fa-arrow-right ml-1"></i></a>
+                </div>
+                <div class="card-grid">'''
+            for m in sec['items']:
+                body += render_template_string(CARD_HTML, m=m)
+            body += '</div></section>'
+    
+    if not movies and not tv_shows and not anime:
+        body += '<div class="h-[60vh] flex flex-col items-center justify-center text-zinc-500"><i class="fa fa-database text-6xl mb-4"></i><h2 class="text-2xl font-bold">DATABASE EMPTY!</h2><p>Sync from Admin Panel.</p></div>'
+        
+    body += '</main>'
+    return render_template_string(BASE_HEAD + body + "</body></html>")
+
+# --- ২. ক্যাটাগরি ভিউ পেজ (See More) ---
+@app.route('/category/<ctype>')
+def category_view(ctype):
+    if ctype == "anime":
+        items = list(collection.find({"category": "Animation", "language": "ja"}).sort('release_date', -1))
+        title = "ALL ANIME SERIES"
+    elif ctype == "movie":
+        items = list(collection.find({"type": "movie", "category": {"$ne": "Animation"}}).sort('release_date', -1))
+        title = "ALL MOVIES"
+    else:
+        items = list(collection.find({"type": "tv", "category": {"$ne": "Animation"}}).sort('release_date', -1))
+        title = "ALL TV SHOWS"
+
+    body = NAV_HTML + f'<main class="container mx-auto py-10 px-4"><h2 class="text-3xl font-black mb-10 italic uppercase border-l-4 border-rose-600 pl-4">{title}</h2><div class="card-grid">'
+    for m in items:
+        body += render_template_string(CARD_HTML, m=m)
+    body += '</div></main>'
+    return render_template_string(BASE_HEAD + body + "</body></html>")
+
+# --- ৩. ডিটেইল পেজ (ইউটিউব ট্রেলার এমবেড সহ) ---
 @app.route('/details/<tid>')
 def details(tid):
     m = collection.find_one({"tmdb_id": tid})
@@ -98,7 +143,6 @@ def details(tid):
     
     body = NAV_HTML + """
     <div class="relative min-h-screen pb-20">
-        <!-- Backdrop Banner (Fixed Thumbnail) -->
         <div class="h-[50vh] md:h-[75vh] relative overflow-hidden">
             <img src="{{ m.backdrop }}" class="w-full h-full object-cover opacity-20 blur-[2px]">
             <div class="absolute inset-0 bg-gradient-to-t from-[#050505]"></div>
@@ -151,7 +195,6 @@ def details(tid):
                 </div>
             </div>
 
-            <!-- YouTube Trailer Section -->
             {% if m.yt_id != "N/A" %}
             <div id="trailer-section" class="mt-20">
                 <h3 class="text-3xl font-black mb-10 border-l-4 border-rose-600 pl-4 uppercase italic">Official Trailer</h3>
@@ -161,7 +204,6 @@ def details(tid):
             </div>
             {% endif %}
 
-            <!-- Cast & Profiles -->
             <div class="mt-32">
                 <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Cast, Director & Producers</h3>
                 <div class="flex gap-10 overflow-x-auto pb-10 scroll-hide">
@@ -187,7 +229,6 @@ def details(tid):
                 </div>
             </div>
 
-            <!-- Full Gallery -->
             <div class="mt-32">
                 <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Media Gallery</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
@@ -199,7 +240,6 @@ def details(tid):
         </div>
     </div>
 
-    <!-- Person Detail Modal -->
     <div id="personModal" class="modal" onclick="this.style.display='none'">
         <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-[3.5rem] max-w-3xl w-full max-h-[85vh] overflow-y-auto relative shadow-2xl" onclick="event.stopPropagation()">
             <div id="personContent" class="flex flex-col md:flex-row gap-8"></div>
@@ -232,7 +272,7 @@ def details(tid):
     """
     return render_template_string(BASE_HEAD + body + "</body></html>", m=m)
 
-# --- ৩. এডমিন কন্ট্রোল ---
+# --- ৪. এডমিন কন্ট্রোল ---
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST' and request.form.get('pw') == ADMIN_PW:
@@ -327,7 +367,7 @@ def dashboard():
     """
     return render_template_string(BASE_HEAD + body + "</body></html>", items=items)
 
-# --- ৪. ইন্টারনাল স্ক্র্যাপিং ইঞ্জিন এপিআই ---
+# --- ৫. ইন্টারনাল স্ক্র্যাপিং ইঞ্জিন এপিআই ---
 
 @app.route('/api/person/<id>')
 def api_person(id):
@@ -351,16 +391,13 @@ def sync_single():
     url = f"https://api.themoviedb.org/3/{mtype}/{tid}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,images,watch/providers"
     d = requests.get(url).json()
 
-    # Cast & Crew Information
     crew = d.get('credits', {}).get('crew', [])
     director = next(({"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150"} for p in crew if p['job'] == 'Director'), {"id": 0, "name": "N/A", "photo": ""})
     producers = [{"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150"} for p in crew if p['job'] in ['Producer', 'Executive Producer']][:4]
     cast = [{"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150", "role": p['character']} for p in d.get('credits', {}).get('cast', [])[:20]]
 
-    # OTT Information
     ott = [{"name": prov['provider_name'], "logo": IMG_BASE + prov['logo_path']} for prov in d.get('watch/providers', {}).get('results', {}).get('US', {}).get('flatrate', [])]
     
-    # Trailer & Gallery
     ytid = next((v['key'] for v in d.get('videos', {}).get('results', []) if v['type'] == 'Trailer'), "N/A")
     gallery = [IMG_ORIG + i['file_path'] for i in d.get('images', {}).get('posters', [])[:10]] + [IMG_ORIG + i['file_path'] for i in d.get('images', {}).get('backdrops', [])[:10]]
 
