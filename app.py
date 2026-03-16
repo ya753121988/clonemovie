@@ -1,19 +1,19 @@
 import os
 import telebot
-from flask import Flask, request, redirect, session
+from flask import Flask, request, redirect, session, url_for
 from pymongo import MongoClient
 
-# --- কনফিগারেশন ---
+# --- কনফিগারেশন (আপনার তথ্য দিয়ে সাজানো) ---
 BOT_TOKEN = "8015568609:AAFEDoWVHzvQGwmNIl540XavKa_OQzXX2sk"
 MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 ADMIN_PASSWORD = "admin123"
-CHANNEL_ID = -1003704764803  # আপনার চ্যানেল আইডি
+CHANNEL_ID = -1003704764803
 OWNER_ID = 7120801813
 SITE_URL = "https://clonemovie-six.vercel.app"
 
 # Flask & Bot Setup
 app = Flask(__name__)
-app.secret_key = "movie_portal_secret"
+app.secret_key = "movie_portal_secure_key"
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 # MongoDB Setup
@@ -30,69 +30,83 @@ DESIGN = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background: #080b12; color: #e5e7eb; font-family: 'Inter', sans-serif; }
+        body { background: #080b12; color: #e5e7eb; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
         .navbar { background: #111827; border-bottom: 2px solid #3b82f6; padding: 15px; }
         .card-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 30px; }
         .movie-card { background: #1f2937; border-radius: 15px; overflow: hidden; width: 220px; transition: 0.3s; border: 1px solid #374151; text-decoration: none; color: white; display: block; }
-        .movie-card:hover { transform: translateY(-5px); border-color: #3b82f6; }
+        .movie-card:hover { transform: translateY(-5px); border-color: #3b82f6; box-shadow: 0 10px 20px rgba(0,0,0,0.5); }
         .movie-card img { width: 100%; height: 280px; object-fit: cover; }
         .btn-dl { background: linear-gradient(90deg, #2563eb, #7c3aed); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; width: 100%; text-decoration: none; display: block; text-align: center; }
         .detail-card { background: #111827; border-radius: 20px; padding: 30px; border: 1px solid #374151; max-width: 500px; margin: 40px auto; }
-        .admin-item { background: #1f2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; }
+        .admin-item { background: #1f2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
 """
 
-# --- টেলিগ্রাম বট লজিক ---
+# --- বট হ্যান্ডলার ---
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
     chat_id = message.chat.id
-    command_text = message.text.split()
+    command_args = message.text.split()
     
-    # যদি লিঙ্কে মেসেজ আইডি থাকে (যেমন: /start 10)
-    if len(command_text) > 1:
-        msg_id = command_text[1]
+    # যদি স্টার্ট লিঙ্কে আইডি থাকে (যেমন: /start 10)
+    if len(command_args) > 1:
+        msg_id = command_args[1]
         try:
-            # চ্যানেলের ওই মেসেজ আইডি থেকে সরাসরি ইউজারকে কপি করে পাঠানো
+            # সরাসরি চ্যানেল থেকে মেসেজটি কপি করে ইউজারের ইনবক্সে পাঠানো
             bot.copy_message(chat_id, CHANNEL_ID, int(msg_id))
         except Exception as e:
-            bot.send_message(chat_id, f"❌ দুঃখিত! ভিডিওটি পাওয়া যায়নি বা চ্যানেল থেকে ডিলেট করা হয়েছে।\nError: {e}")
+            bot.send_message(chat_id, "❌ দুঃখিত! ফাইলটি খুঁজে পাওয়া যায়নি।")
     else:
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 ওয়েবসাইট ভিজিট করুন", url=SITE_URL))
-        bot.send_message(chat_id, "👋 **মুভি পোর্টালে স্বাগতম!**\nমুভি ডাউনলোড করতে ওয়েবসাইট ভিজিট করুন।", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(chat_id, "👋 **স্বাগতম!**\nমুভি ডাউনলোড করতে ওয়েবসাইট থেকে লিঙ্কে ক্লিক করুন।", reply_markup=markup, parse_mode="Markdown")
 
 @bot.channel_post_handler(content_types=['video', 'document'])
 def handle_channel_post(message):
-    # চ্যানেল থেকে মেসেজ আইডি এবং নাম সংগ্রহ
+    # চ্যানেল পোস্ট থেকে আইডি এবং টাইটেল সেভ করা
     msg_id = message.message_id
     file_name = "New Movie"
-    
     if message.video:
-        file_name = message.video.file_name or "Movie_File"
+        file_name = message.video.file_name or message.caption or "Movie_File"
     elif message.document:
-        file_name = message.document.file_name or "Document_File"
-    
-    # ডাটাবেসে মেসেজ আইডি সেভ করা
+        file_name = message.document.file_name or message.caption or "Document_File"
+
     data = {
         "file_name": file_name,
-        "msg_id": msg_id, # চ্যানেলের মেসেজ আইডি
+        "msg_id": msg_id,
         "thumb": "https://via.placeholder.com/400x600/080b12/ffffff?text=Premium+Movie"
     }
+    # ডাটাবেসে সেভ বা আপডেট
     videos_col.update_one({"msg_id": msg_id}, {"$set": data}, upsert=True)
     
+    # ওনারকে অ্যালার্ট দেওয়া
     bot.send_message(OWNER_ID, f"✅ **মুভি অ্যাড হয়েছে!**\n📂 নাম: {file_name}\n🆔 মেসেজ আইডি: {msg_id}\n🌐 লিঙ্ক: {SITE_URL}/view/{msg_id}")
 
-# --- ফ্লাস্ক রুটস ---
+# --- ওয়েবসাইট রুটস ---
 
 @app.route('/')
 def home():
     videos = list(videos_col.find().sort("msg_id", -1))
-    movies_html = "".join([f'<a href="/view/{v["msg_id"]}" class="movie-card"><img src="{v.get("thumb")}"><div class="p-3 text-center"><h6 class="text-truncate">{v["file_name"]}</h6><small>ID: {v["msg_id"]}</small></div></a>' for v in videos])
+    movies_html = ""
+    for v in videos:
+        movies_html += f'''
+        <a href="/view/{v['msg_id']}" class="movie-card">
+            <img src="{v.get('thumb')}">
+            <div class="p-3 text-center">
+                <h6 class="text-truncate">{v['file_name']}</h6>
+                <small class="text-secondary">ID: {v['msg_id']}</small>
+            </div>
+        </a>'''
     
-    return f"{DESIGN}<nav class='navbar'><div class='container'><h3 class='mx-auto text-primary'>MOVIE PORTAL</h3></div></nav><div class='card-container'>{movies_html if movies_html else '<h4>No movies found.</h4>'}</div></body></html>"
+    return f"""
+    {DESIGN}
+    <nav class="navbar"><div class="container"><h3 class="mx-auto text-primary">MOVIE PORTAL</h3></div></nav>
+    <div class="card-container">{movies_html if movies_html else '<h4 class="text-center">No movies found. Post to your channel first.</h4>'}</div>
+    </body></html>
+    """
 
 @app.route('/view/<msg_id>')
 def view(msg_id):
@@ -100,16 +114,17 @@ def view(msg_id):
     if not video: return "Movie Not Found"
     
     bot_info = bot.get_me()
-    # এখানে সরাসরি মেসেজ আইডি (যেমন: 10) দেওয়া হচ্ছে
     download_url = f"https://t.me/{bot_info.username}?start={msg_id}"
     
     return f"""
     {DESIGN}
     <div class="container">
         <div class="detail-card text-center">
-            <img src="{video.get('thumb')}" class="img-fluid rounded mb-4">
+            <img src="{video.get('thumb')}" class="img-fluid rounded mb-4 shadow">
             <h2 class="mb-3">{video['file_name']}</h2>
-            <a href="{download_url}" class="btn-dl py-3 fs-5">📥 Get Movie in Bot</a>
+            <p class="text-secondary">চ্যানেল আইডি: {msg_id}</p>
+            <hr style="border-color: #374151;">
+            <a href="{download_url}" class="btn-dl py-3 fs-5">📥 Get File via Telegram Bot</a>
             <div class="mt-4"><a href="/" class="text-secondary text-decoration-none">← Back to Home</a></div>
         </div>
     </div>
@@ -124,7 +139,7 @@ def admin():
         return f'{DESIGN}<div class="container mt-5 w-50 detail-card"><form method="post"><h4>Admin Login</h4><input type="password" name="p" class="form-control mb-3 bg-dark text-white"><button class="btn-dl">Login</button></form></div>'
     
     videos = list(videos_col.find().sort("msg_id", -1))
-    rows = "".join([f'<div class="admin-item"><span>{v["file_name"]} (ID: {v["msg_id"]})</span><a href="/del/{v["msg_id"]}" class="text-danger">Delete</a></div>' for v in videos])
+    rows = "".join([f'<div class="admin-item"><span>{v["file_name"]}</span><a href="/del/{v["msg_id"]}" class="text-danger">Delete</a></div>' for v in videos])
     return f'{DESIGN}<div class="container mt-5"><h3>Admin Panel</h3><br>{rows}</div></body></html>'
 
 @app.route('/del/<msg_id>')
@@ -147,5 +162,6 @@ def setup():
     success = bot.set_webhook(url=f"{SITE_URL}/webhook")
     return "✅ Webhook Setup Successful!" if success else "❌ Failed!"
 
+# Vercel entry point
 if __name__ == "__main__":
     app.run(debug=True)
