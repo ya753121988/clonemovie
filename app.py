@@ -7,12 +7,12 @@ from pyrogram import Client, filters
 from pyrogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 # --- কনফিগারেশন (Environment Variables থেকে নিবে) ---
-API_ID = os.getenv("API_ID", "YOUR_API_ID")
-API_HASH = os.getenv("API_HASH", "YOUR_API_HASH")
-BOT_TOKEN = os.getenv("BOT_TOKEN", "YOUR_BOT_TOKEN")
-MONGO_URI = os.getenv("MONGO_URI", "YOUR_MONGODB_URI")
+API_ID = os.getenv("API_ID", "29904834")
+API_HASH = os.getenv("API_HASH", "8b4fd9ef578af114502feeafa2d31938")
+BOT_TOKEN = os.getenv("BOT_TOKEN", "8015568609:AAFEDoWVHzvQGwmNIl540XavKa_OQzXX2sk")
+MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 ADMIN_PASSWORD = os.getenv("ADMIN_PASSWORD", "admin123")
-CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-100xxxxxx")) # আপনার প্রাইভেট চ্যানেল আইডি
+CHANNEL_ID = int(os.getenv("CHANNEL_ID", "-1003704764803")) # আপনার প্রাইভেট চ্যানেল আইডি
 
 # Flask অ্যাপ সেটআপ
 app = Flask(__name__)
