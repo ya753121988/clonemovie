@@ -4,7 +4,7 @@ from flask import Flask, request, render_template_string, redirect, session, url
 from pymongo import MongoClient
 from bson import ObjectId
 
-# --- ১. কনফিগারেশন (আপনার দেওয়া তথ্য) ---
+# --- কনফিগারেশন ---
 BOT_TOKEN = "8015568609:AAFEDoWVHzvQGwmNIl540XavKa_OQzXX2sk"
 MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 ADMIN_PASSWORD = "admin123"
@@ -12,17 +12,17 @@ CHANNEL_ID = -1003704764803
 OWNER_ID = 7120801813
 SITE_URL = "https://clonemovie-six.vercel.app"
 
-# Flask & Bot Setup (threaded=False is must for Vercel)
+# Flask & Bot Setup (Vercel এর জন্য threaded=False বাধ্যতামূলক)
 app = Flask(__name__)
-app.secret_key = "premium_secret_v10"
+app.secret_key = os.urandom(24)
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
-# MongoDB
+# MongoDB Setup
 client = MongoClient(MONGO_URI)
-db = client['premium_movie_db']
-videos_col = db['videos']
+db = client['premium_movie_portal']
+videos_col = db['movies']
 
-# --- ২. প্রিমিয়াম ডার্ক ডিজাইন (Netflix Style) ---
+# --- প্রিমিয়াম ডার্ক ডিজাইন (Netflix Theme) ---
 DESIGN = """
 <!DOCTYPE html>
 <html lang="en">
@@ -31,80 +31,96 @@ DESIGN = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <style>
-        body { background-color: #06090f; color: #ffffff; font-family: 'Segoe UI', sans-serif; }
-        .navbar { background: #0b0f19; border-bottom: 2px solid #1f2937; padding: 15px; }
-        .movie-card { background: #111827; border: 1px solid #1f2937; border-radius: 15px; overflow: hidden; transition: 0.3s; position: relative; }
-        .movie-card:hover { transform: translateY(-8px); border-color: #3b82f6; box-shadow: 0 10px 30px rgba(59, 130, 246, 0.2); }
-        .movie-card img { width: 100%; height: 260px; object-fit: cover; }
-        .movie-info { padding: 15px; text-align: center; }
-        .btn-premium { background: linear-gradient(45deg, #2563eb, #7c3aed); color: white; border: none; padding: 12px 20px; border-radius: 10px; font-weight: bold; width: 100%; transition: 0.3s; text-decoration: none; display: inline-block; }
-        .btn-premium:hover { opacity: 0.9; box-shadow: 0 0 15px rgba(124, 58, 237, 0.5); color: white; }
-        .glass-detail { background: rgba(31, 41, 55, 0.5); backdrop-filter: blur(10px); border-radius: 20px; border: 1px solid #374151; padding: 30px; margin-top: 50px; }
-        .ss-grid img { width: 100%; border-radius: 12px; border: 1px solid #1f2937; margin-bottom: 10px; }
-        .admin-item { background: #1f2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
+        body { background: #080b12; color: #e5e7eb; font-family: 'Inter', sans-serif; }
+        .navbar { background: #111827; border-bottom: 2px solid #3b82f6; padding: 15px; }
+        .card-container { display: flex; flex-wrap: wrap; justify-content: center; gap: 20px; padding: 30px; }
+        .movie-card { background: #1f2937; border-radius: 15px; overflow: hidden; width: 220px; transition: 0.3s; border: 1px solid #374151; }
+        .movie-card:hover { transform: translateY(-10px); border-color: #3b82f6; box-shadow: 0 10px 25px rgba(59, 130, 246, 0.3); }
+        .movie-card img { width: 100%; height: 280px; object-fit: cover; }
+        .btn-dl { background: linear-gradient(90deg, #2563eb, #7c3aed); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; width: 100%; text-decoration: none; display: block; text-align: center; }
+        .detail-card { background: #111827; border-radius: 20px; padding: 30px; border: 1px solid #374151; max-width: 800px; margin: 40px auto; }
+        .ss-img { width: 100%; border-radius: 10px; border: 1px solid #374151; margin-bottom: 10px; }
     </style>
 </head>
 <body>
 """
 
-# --- ৩. বট লজিক (Start & Channel Post) ---
+# --- বট লজিক (Start & Auto-Add) ---
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
-    text_parts = message.text.split()
-    if len(text_parts) > 1:
-        file_id = text_parts[1]
+    chat_id = message.chat.id
+    command_text = message.text.split()
+    
+    if len(command_text) > 1:
+        # ওয়েবসাইট থেকে আসা রিকোয়েস্ট (file_id রিসিভ করা)
+        file_id = command_text[1]
         try:
-            bot.send_video(message.chat.id, file_id, caption="✅ **আপনার ভিডিওটি প্রস্তুত!**\\n\\nউপভোগ করতে প্লে বাটনে ক্লিক করুন।", parse_mode="Markdown")
-        except:
-            bot.send_message(message.chat.id, "❌ দুঃখিত, ভিডিওটি পাঠাতে সমস্যা হয়েছে।")
+            bot.send_chat_action(chat_id, 'upload_video')
+            # সরাসরি ভিডিও হিসেবে পাঠানো
+            bot.send_video(chat_id, file_id, caption="🎬 **আপনার ফাইলটি প্রস্তুত!**\n📥 আমাদের ওয়েবসাইট থেকে ডাউনলোড করার জন্য ধন্যবাদ।", parse_mode="Markdown")
+        except Exception as e:
+            # যদি ভিডিও হিসেবে না যায়, ডকুমেন্ট হিসেবে পাঠানোর চেষ্টা
+            try:
+                bot.send_document(chat_id, file_id, caption="🎬 **আপনার ফাইলটি প্রস্তুত!**")
+            except:
+                bot.send_message(chat_id, "❌ দুঃখিত! ফাইলটি পাঠাতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।")
     else:
+        # সাধারণ স্টার্ট মেসেজ
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 ওয়েবসাইট ভিজিট করুন", url=SITE_URL))
-        bot.send_message(message.chat.id, "👋 **মুভি পোর্টালে স্বাগতম!**\\n\\nলেটেস্ট সব মুভি ও ভিডিও ডাউনলোড করতে নিচের বাটনে ক্লিক করে ওয়েবসাইট ভিজিট করুন।", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(chat_id, "👋 **মুভি পোর্টালে স্বাগতম!**\n\nমুভি ডাউনলোড করতে নিচের বাটনে ক্লিক করে আমাদের ওয়েবসাইট ভিজিট করুন।", reply_markup=markup, parse_mode="Markdown")
 
-@bot.channel_post_handler(content_types=['video'])
-def handle_channel_video(message):
+@bot.channel_post_handler(content_types=['video', 'document'])
+def handle_channel_post(message):
     if message.chat.id == CHANNEL_ID:
-        file_name = message.video.file_name or "New Movie"
-        file_id = message.video.file_id
-        file_size = f"{round(message.video.file_size / (1024 * 1024), 2)} MB"
+        # ফাইল আইডি এবং নাম সংগ্রহ
+        file_name = "New Movie"
+        file_id = ""
+        
+        if message.video:
+            file_name = message.video.file_name or "Movie_File"
+            file_id = message.video.file_id
+        elif message.document:
+            file_name = message.document.file_name or "Document_File"
+            file_id = message.document.file_id
+            
+        file_size = "Unknown"
+        if message.video: file_size = f"{round(message.video.file_size / (1024 * 1024), 2)} MB"
         
         # ডাটাবেসে সেভ
         data = {
             "file_name": file_name,
             "file_id": file_id,
             "file_size": file_size,
-            "thumb_url": "https://via.placeholder.com/400x600/0b0f19/ffffff?text=Premium+Movie"
+            "thumb": "https://via.placeholder.com/400x600/080b12/ffffff?text=Premium+Content"
         }
         res = videos_col.insert_one(data)
         
         # আপনাকে নোটিফিকেশন পাঠানো
-        log = f"✅ **নতুন মুভি সাইটে অ্যাড হয়েছে!**\\n📂 `{file_name}`\\n🌐 লিঙ্ক: {SITE_URL}/view/{res.inserted_id}"
+        log = f"✅ **নতুন ফাইল অ্যাড হয়েছে!**\n📂 `{file_name}`\n🌐 লিঙ্ক: {SITE_URL}/view/{res.inserted_id}"
         bot.send_message(OWNER_ID, log, parse_mode="Markdown")
 
-# --- ৪. ওয়েবসাইট রুটস ---
+# --- ওয়েবসাইট রুটস ---
 
 @app.route('/')
 def home():
     videos = list(videos_col.find().sort("_id", -1))
-    movies_list = ""
+    movies_html = ""
     for v in videos:
-        movies_list += f'''
-        <div class="col-6 col-md-3 mb-4">
-            <div class="movie-card">
-                <img src="{v.get('thumb_url')}">
-                <div class="movie-info">
-                    <h6 class="text-truncate">{v['file_name']}</h6>
-                    <a href="/view/{v['_id']}" class="btn-premium btn-sm mt-2">Details</a>
-                </div>
+        movies_html += f'''
+        <div class="movie-card">
+            <img src="{v.get('thumb')}">
+            <div class="p-3 text-center">
+                <h6 class="text-truncate">{v['file_name']}</h6>
+                <a href="/view/{v['_id']}" class="btn-dl btn-sm mt-2">Details</a>
             </div>
         </div>'''
     
     return f"""
     {DESIGN}
     <nav class="navbar"><div class="container"><h3 class="mx-auto text-primary">MOVIE PORTAL</h3></div></nav>
-    <div class="container mt-5"><div class="row">{movies_list if movies_list else '<h4 class="text-center">No movies found.</h4>'}</div></div>
+    <div class="card-container">{movies_html if movies_html else '<h4 class="text-center">No movies found. Forward a video to the channel.</h4>'}</div>
     </body></html>
     """
 
@@ -119,21 +135,19 @@ def view(id):
     return f"""
     {DESIGN}
     <div class="container">
-        <div class="row justify-content-center">
-            <div class="col-md-8 glass-detail">
-                <img src="{video.get('thumb_url')}" class="img-fluid rounded mb-4 w-100" style="max-height:400px; object-fit:contain;">
-                <h2 class="mb-2">{video['file_name']}</h2>
-                <p class="text-secondary">Size: {video.get('file_size')}</p>
-                <hr style="border-color: #374151;">
-                <h5 class="mb-3">Screenshots</h5>
-                <div class="row g-2 ss-grid">
-                    <div class="col-6"><img src="{video.get('thumb_url')}"></div>
-                    <div class="col-6"><img src="{video.get('thumb_url')}"></div>
-                </div>
-                <br>
-                <a href="{download_url}" class="btn-premium py-3 fs-5">📥 Download via Telegram Bot</a>
-                <div class="text-center mt-4"><a href="/" class="text-secondary text-decoration-none">← Back to Home</a></div>
+        <div class="detail-card text-center">
+            <img src="{video.get('thumb')}" class="img-fluid rounded mb-4" style="max-height:400px;">
+            <h2 class="mb-2">{video['file_name']}</h2>
+            <p class="text-secondary">File Size: {video.get('file_size')}</p>
+            <hr style="border-color: #374151;">
+            <h5 class="text-start mb-3">Preview Screenshots</h5>
+            <div class="row g-2">
+                <div class="col-6"><img src="{video.get('thumb')}" class="ss-img"></div>
+                <div class="col-6"><img src="{video.get('thumb')}" class="ss-img"></div>
             </div>
+            <br>
+            <a href="{download_url}" class="btn-dl py-3 fs-5">📥 Download via Telegram Bot</a>
+            <div class="mt-4"><a href="/" class="text-secondary text-decoration-none">← Back to Home</a></div>
         </div>
     </div>
     </body></html>
@@ -144,20 +158,20 @@ def admin():
     if request.method == 'POST' and request.form.get('p') == ADMIN_PASSWORD:
         session['adm'] = True
     if not session.get('adm'):
-        return f'{DESIGN}<div class="container mt-5 w-50 glass-detail"><form method="post"><h4>Admin Login</h4><input type="password" name="p" class="form-control mb-3 bg-dark text-white border-secondary"><button class="btn-premium">Login</button></form></div>'
+        return f'{DESIGN}<div class="container mt-5 w-50 detail-card"><form method="post"><h4>Admin Login</h4><input type="password" name="p" class="form-control mb-3 bg-dark text-white"><button class="btn-dl">Login</button></form></div>'
     
     videos = list(videos_col.find().sort("_id", -1))
-    list_html = ""
+    rows = ""
     for v in videos:
-        list_html += f'<div class="admin-item"><span>{v["file_name"]}</span><a href="/del/{v["_id"]}" class="text-danger">Delete</a></div>'
-    return f'{DESIGN}<div class="container mt-5"><h3>Admin Panel</h3><br>{list_html}</div></body></html>'
+        rows += f'<div class="admin-item"><span>{v["file_name"]}</span><a href="/del/{v["_id"]}" class="text-danger">Delete</a></div>'
+    return f'{DESIGN}<div class="container mt-5"><h3>Admin Panel</h3>{rows}</div></body></html>'
 
 @app.route('/del/<id>')
 def delete(id):
     if session.get('adm'): videos_col.delete_one({"_id": ObjectId(id)})
     return redirect('/admin')
 
-# --- ৫. Webhook & Setup ---
+# --- Webhook & Setup ---
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -174,4 +188,6 @@ def setup():
     success = bot.set_webhook(url=f"{SITE_URL}/webhook")
     return "<h1>✅ Webhook Setup Successful!</h1>" if success else "<h1>❌ Setup Failed!</h1>"
 
-# Vercel-এর জন্য 'app' অবজেক্ট
+# Vercel Handler
+def handler(event, context):
+    return app(event, context)
