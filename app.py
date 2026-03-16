@@ -7,7 +7,7 @@ app = Flask(__name__)
 app.secret_key = "absolute_ultimate_pro_v101"
 
 # --- কনফিগারেশন ---
-MONGO_URI = "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
+MONGO_URI = "mongodb+srv://roxiw19528:roxiw19528@cluster0.vl508y4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 TMDB_API_KEY = "275aff9f1c570308fa10d14c6f49f998"
 IMG_BASE = "https://image.tmdb.org/t/p/w500"
 IMG_ORIG = "https://image.tmdb.org/t/p/original"
