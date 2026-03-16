@@ -90,7 +90,7 @@ def home():
     """
     return render_template_string(BASE_HEAD + body + "</body></html>", items=items)
 
-# --- ২. ডিটেইল পেজ (বিন্দু পরিমাণ মিসিং ছাড়া) ---
+# --- ২. ডিটেইল পেজ (ইউটিউব ট্রেলার এমবেড সহ) ---
 @app.route('/details/<tid>')
 def details(tid):
     m = collection.find_one({"tmdb_id": tid})
@@ -109,8 +109,8 @@ def details(tid):
                 <div class="w-64 md:w-96 flex-shrink-0 mx-auto lg:mx-0">
                     <img src="{{ m.poster }}" class="w-full rounded-[3.5rem] border border-zinc-700 shadow-2xl">
                     {% if m.yt_id != "N/A" %}
-                    <a href="https://www.youtube.com/watch?v={{ m.yt_id }}" target="_blank" class="mt-8 flex items-center justify-center gap-3 bg-red-600 py-5 rounded-3xl font-black shadow-xl hover:scale-105 transition text-white">
-                        <i class="fa fa-play text-xl"></i> WATCH TRAILER
+                    <a href="#trailer-section" class="mt-8 flex items-center justify-center gap-3 bg-red-600 py-5 rounded-3xl font-black shadow-xl hover:scale-105 transition text-white">
+                        <i class="fa fa-play text-xl"></i> SCROLL TO TRAILER
                     </a>
                     {% endif %}
                 </div>
@@ -151,7 +151,17 @@ def details(tid):
                 </div>
             </div>
 
-            <!-- Cast & Profiles (With Photo Click Detail) -->
+            <!-- YouTube Trailer Section -->
+            {% if m.yt_id != "N/A" %}
+            <div id="trailer-section" class="mt-20">
+                <h3 class="text-3xl font-black mb-10 border-l-4 border-rose-600 pl-4 uppercase italic">Official Trailer</h3>
+                <div class="aspect-video w-full max-w-5xl mx-auto rounded-[3rem] overflow-hidden border border-zinc-800 shadow-2xl">
+                    <iframe class="w-full h-full" src="https://www.youtube.com/embed/{{ m.yt_id }}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                </div>
+            </div>
+            {% endif %}
+
+            <!-- Cast & Profiles -->
             <div class="mt-32">
                 <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Cast, Director & Producers</h3>
                 <div class="flex gap-10 overflow-x-auto pb-10 scroll-hide">
@@ -177,9 +187,9 @@ def details(tid):
                 </div>
             </div>
 
-            <!-- Full Gallery (Wallpapers & Posters) -->
+            <!-- Full Gallery -->
             <div class="mt-32">
-                <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Media Gallery (Thumbnails)</h3>
+                <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Media Gallery</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
                     {% for img in m.gallery %}
                     <div class="overflow-hidden rounded-3xl border border-zinc-800 shadow-xl"><img src="{{ img }}" class="w-full h-full object-cover hover:scale-110 transition duration-700"></div>
@@ -254,7 +264,6 @@ def dashboard():
         </div>
 
         <div class="grid md:grid-cols-2 gap-10 mb-16">
-            <!-- Unlimited Auto Sync -->
             <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl text-center">
                 <h3 class="text-xl font-bold mb-8 text-blue-500 uppercase tracking-widest italic">Unlimited Auto Sync</h3>
                 <div class="flex flex-col gap-4 mb-6">
