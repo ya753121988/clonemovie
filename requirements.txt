@@ -4,3 +4,8 @@ requests
 pyTelegramBotAPI
 Werkzeug
 dnspython
+flask
+pyrogram
+tgcrypto
+pymongo
+dnspython
