@@ -12,9 +12,9 @@ CHANNEL_ID = -1003704764803
 OWNER_ID = 7120801813
 SITE_URL = "https://clonemovie-six.vercel.app"
 
-# Flask & Bot Setup (Vercel এর জন্য threaded=False বাধ্যতামূলক)
+# Flask Setup
 app = Flask(__name__)
-app.secret_key = os.urandom(24)
+app.secret_key = "super_secret_key_123" # সরাসরি একটি স্ট্রিং দেওয়া ভালো Vercel এর জন্য
 bot = telebot.TeleBot(BOT_TOKEN, threaded=False)
 
 # MongoDB Setup
@@ -22,7 +22,7 @@ client = MongoClient(MONGO_URI)
 db = client['premium_movie_portal']
 videos_col = db['movies']
 
-# --- প্রিমিয়াম ডার্ক ডিজাইন (Netflix Theme) ---
+# --- ডিজাইন (Netflix Theme) ---
 DESIGN = """
 <!DOCTYPE html>
 <html lang="en">
@@ -40,12 +40,13 @@ DESIGN = """
         .btn-dl { background: linear-gradient(90deg, #2563eb, #7c3aed); color: white; border: none; padding: 12px; border-radius: 10px; font-weight: bold; width: 100%; text-decoration: none; display: block; text-align: center; }
         .detail-card { background: #111827; border-radius: 20px; padding: 30px; border: 1px solid #374151; max-width: 800px; margin: 40px auto; }
         .ss-img { width: 100%; border-radius: 10px; border: 1px solid #374151; margin-bottom: 10px; }
+        .admin-item { background: #1f2937; padding: 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; }
     </style>
 </head>
 <body>
 """
 
-# --- বট লজিক (Start & Auto-Add) ---
+# --- বট লজিক ---
 
 @bot.message_handler(commands=['start'])
 def handle_start(message):
@@ -53,42 +54,36 @@ def handle_start(message):
     command_text = message.text.split()
     
     if len(command_text) > 1:
-        # ওয়েবসাইট থেকে আসা রিকোয়েস্ট (file_id রিসিভ করা)
         file_id = command_text[1]
         try:
             bot.send_chat_action(chat_id, 'upload_video')
-            # সরাসরি ভিডিও হিসেবে পাঠানো
-            bot.send_video(chat_id, file_id, caption="🎬 **আপনার ফাইলটি প্রস্তুত!**\n📥 আমাদের ওয়েবসাইট থেকে ডাউনলোড করার জন্য ধন্যবাদ।", parse_mode="Markdown")
-        except Exception as e:
-            # যদি ভিডিও হিসেবে না যায়, ডকুমেন্ট হিসেবে পাঠানোর চেষ্টা
+            bot.send_video(chat_id, file_id, caption="🎬 **আপনার ফাইলটি প্রস্তুত!**", parse_mode="Markdown")
+        except:
             try:
                 bot.send_document(chat_id, file_id, caption="🎬 **আপনার ফাইলটি প্রস্তুত!**")
             except:
-                bot.send_message(chat_id, "❌ দুঃখিত! ফাইলটি পাঠাতে সমস্যা হচ্ছে। আবার চেষ্টা করুন।")
+                bot.send_message(chat_id, "❌ দুঃখিত! ফাইলটি পাঠাতে সমস্যা হচ্ছে।")
     else:
-        # সাধারণ স্টার্ট মেসেজ
         markup = telebot.types.InlineKeyboardMarkup()
         markup.add(telebot.types.InlineKeyboardButton("🌐 ওয়েবসাইট ভিজিট করুন", url=SITE_URL))
-        bot.send_message(chat_id, "👋 **মুভি পোর্টালে স্বাগতম!**\n\nমুভি ডাউনলোড করতে নিচের বাটনে ক্লিক করে আমাদের ওয়েবসাইট ভিজিট করুন।", reply_markup=markup, parse_mode="Markdown")
+        bot.send_message(chat_id, "👋 **মুভি পোর্টালে স্বাগতম!**", reply_markup=markup, parse_mode="Markdown")
 
 @bot.channel_post_handler(content_types=['video', 'document'])
 def handle_channel_post(message):
     if message.chat.id == CHANNEL_ID:
-        # ফাইল আইডি এবং নাম সংগ্রহ
         file_name = "New Movie"
         file_id = ""
+        file_size = "Unknown"
         
         if message.video:
             file_name = message.video.file_name or "Movie_File"
             file_id = message.video.file_id
+            file_size = f"{round(message.video.file_size / (1024 * 1024), 2)} MB"
         elif message.document:
             file_name = message.document.file_name or "Document_File"
             file_id = message.document.file_id
+            file_size = f"{round(message.document.file_size / (1024 * 1024), 2)} MB"
             
-        file_size = "Unknown"
-        if message.video: file_size = f"{round(message.video.file_size / (1024 * 1024), 2)} MB"
-        
-        # ডাটাবেসে সেভ
         data = {
             "file_name": file_name,
             "file_id": file_id,
@@ -96,8 +91,6 @@ def handle_channel_post(message):
             "thumb": "https://via.placeholder.com/400x600/080b12/ffffff?text=Premium+Content"
         }
         res = videos_col.insert_one(data)
-        
-        # আপনাকে নোটিফিকেশন পাঠানো
         log = f"✅ **নতুন ফাইল অ্যাড হয়েছে!**\n📂 `{file_name}`\n🌐 লিঙ্ক: {SITE_URL}/view/{res.inserted_id}"
         bot.send_message(OWNER_ID, log, parse_mode="Markdown")
 
@@ -120,13 +113,17 @@ def home():
     return f"""
     {DESIGN}
     <nav class="navbar"><div class="container"><h3 class="mx-auto text-primary">MOVIE PORTAL</h3></div></nav>
-    <div class="card-container">{movies_html if movies_html else '<h4 class="text-center">No movies found. Forward a video to the channel.</h4>'}</div>
+    <div class="card-container">{movies_html if movies_html else '<h4 class="text-center">No movies found.</h4>'}</div>
     </body></html>
     """
 
 @app.route('/view/<id>')
 def view(id):
-    video = videos_col.find_one({"_id": ObjectId(id)})
+    try:
+        video = videos_col.find_one({"_id": ObjectId(id)})
+    except:
+        return "Invalid ID"
+    
     if not video: return "File not found"
     
     bot_info = bot.get_me()
@@ -140,7 +137,6 @@ def view(id):
             <h2 class="mb-2">{video['file_name']}</h2>
             <p class="text-secondary">File Size: {video.get('file_size')}</p>
             <hr style="border-color: #374151;">
-            <h5 class="text-start mb-3">Preview Screenshots</h5>
             <div class="row g-2">
                 <div class="col-6"><img src="{video.get('thumb')}" class="ss-img"></div>
                 <div class="col-6"><img src="{video.get('thumb')}" class="ss-img"></div>
@@ -168,10 +164,9 @@ def admin():
 
 @app.route('/del/<id>')
 def delete(id):
-    if session.get('adm'): videos_col.delete_one({"_id": ObjectId(id)})
+    if session.get('adm'): 
+        videos_col.delete_one({"_id": ObjectId(id)})
     return redirect('/admin')
-
-# --- Webhook & Setup ---
 
 @app.route('/webhook', methods=['POST'])
 def webhook():
@@ -188,6 +183,6 @@ def setup():
     success = bot.set_webhook(url=f"{SITE_URL}/webhook")
     return "<h1>✅ Webhook Setup Successful!</h1>" if success else "<h1>❌ Setup Failed!</h1>"
 
-# Vercel Handler
-def handler(event, context):
-    return app(event, context)
+# Vercel এর জন্য সরাসরি app ব্যবহার করতে হয়
+if __name__ == "__main__":
+    app.run(debug=True)
