@@ -17,21 +17,9 @@ ADMIN_PW = "admin123"
 client = MongoClient(MONGO_URI)
 db = client['AbsoluteCinema_DB']
 collection = db['media_hub']
+settings_col = db['settings']
 
-# --- UI Layout Helpers ---
-NAV_HTML = """
-<nav class="glass p-4 sticky top-0 z-50">
-    <div class="container mx-auto flex justify-between items-center gap-4">
-        <a href="/" class="text-2xl md:text-3xl font-black text-rose-600 italic tracking-tighter">MOVIE-AI</a>
-        <form action="/" method="GET" class="flex flex-1 max-w-md bg-zinc-900 border border-zinc-800 rounded-full px-5 py-2">
-            <input type="text" name="q" placeholder="মুভি, টিভি বা এক্টর..." class="bg-transparent outline-none w-full text-xs md:text-sm text-white">
-            <button type="submit"><i class="fa fa-search text-zinc-500"></i></button>
-        </form>
-        <a href="/admin" class="bg-zinc-800 hover:bg-rose-600 px-4 py-2 rounded-full font-bold text-[10px] md:text-xs transition text-white">ADMIN</a>
-    </div>
-</nav>
-"""
-
+# --- UI Helpers (CSS & HTML) ---
 BASE_HEAD = """
 <!DOCTYPE html>
 <html lang="en">
@@ -52,15 +40,29 @@ BASE_HEAD = """
         @media (min-width: 640px) { .card-grid { grid-template-columns: repeat(3, 1fr); } }
         @media (min-width: 768px) { .card-grid { grid-template-columns: repeat(4, 1fr); } }
         @media (min-width: 1024px) { .card-grid { grid-template-columns: repeat(6, 1fr); } }
+        .scroll-hide::-webkit-scrollbar { display: none; }
     </style>
 </head>
 <body>
 """
 
+NAV_HTML = """
+<nav class="glass p-4 sticky top-0 z-50">
+    <div class="container mx-auto flex justify-between items-center gap-4">
+        <a href="/" class="text-2xl md:text-3xl font-black text-rose-600 italic tracking-tighter">MOVIE-AI</a>
+        <form action="/" method="GET" class="flex flex-1 max-w-md bg-zinc-900 border border-zinc-800 rounded-full px-5 py-2">
+            <input type="text" name="q" placeholder="মুভি, টিভি বা এক্টর..." class="bg-transparent outline-none w-full text-xs md:text-sm text-white">
+            <button type="submit"><i class="fa fa-search text-zinc-500"></i></button>
+        </form>
+        <a href="/admin" class="bg-zinc-800 hover:bg-rose-600 px-4 py-2 rounded-full font-bold text-[10px] md:text-xs transition text-white">ADMIN</a>
+    </div>
+</nav>
+"""
+
 CARD_HTML = """
 <a href="/details/{{ m.tmdb_id }}" class="m-card bg-zinc-900 rounded-[2rem] overflow-hidden border border-zinc-800 block group relative shadow-2xl">
     <div class="aspect-[2/3] overflow-hidden relative">
-        <img src="{{ m.poster }}" class="w-full h-full object-cover">
+        <img src="{{ m.poster }}" class="w-full h-full object-cover" loading="lazy">
         <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center transition">
             <i class="fa-solid fa-play-circle text-5xl"></i>
         </div>
@@ -73,19 +75,20 @@ CARD_HTML = """
 </a>
 """
 
-# --- ১. হোম পেজ (ক্যাটাগরি ভিত্তিক) ---
+# --- ১. হোম পেজ ---
 @app.route('/')
 def home():
     q = request.args.get('q')
+    ads = settings_col.find_one({"name": "ads"}) or {}
+    
     if q:
         items = list(collection.find({"title": {"$regex": q, "$options": "i"}}).sort('release_date', -1))
         body = NAV_HTML + f'<main class="container mx-auto py-10 px-4"><h2 class="text-2xl font-black mb-6 italic border-l-4 border-rose-600 pl-4">SEARCH RESULTS: {q}</h2><div class="card-grid">'
-        for m in items:
-            body += render_template_string(CARD_HTML, m=m)
+        for m in items: body += render_template_string(CARD_HTML, m=m)
         body += '</div></main>'
         return render_template_string(BASE_HEAD + body + "</body></html>")
 
-    # Fetch Categorized Data (Sorted by Release Date)
+    # Categories Logic
     anime = list(collection.find({"category": "Animation", "language": "ja"}).sort('release_date', -1).limit(10))
     movies = list(collection.find({"type": "movie", "category": {"$ne": "Animation"}}).sort('release_date', -1).limit(10))
     tv_shows = list(collection.find({"type": "tv", "category": {"$ne": "Animation"}}).sort('release_date', -1).limit(10))
@@ -96,27 +99,20 @@ def home():
         {"title": "Latest Anime", "items": anime, "link": "/category/anime"}
     ]
 
-    body = NAV_HTML + '<main class="container mx-auto py-10 px-4 space-y-16">'
+    body = NAV_HTML 
+    if ads.get('home_ad'):
+        body += f'<div class="container mx-auto px-4 py-4 flex justify-center overflow-hidden">{ads["home_ad"]}</div>'
+        
+    body += '<main class="container mx-auto py-10 px-4 space-y-16">'
     for sec in sections:
         if sec['items']:
-            body += f'''
-            <section>
-                <div class="flex justify-between items-end mb-8">
-                    <h2 class="text-2xl md:text-3xl font-black italic uppercase border-l-4 border-rose-600 pl-4 tracking-tighter">{sec['title']}</h2>
-                    <a href="{sec['link']}" class="text-rose-600 font-bold text-xs hover:underline">SEE ALL <i class="fa fa-arrow-right ml-1"></i></a>
-                </div>
-                <div class="card-grid">'''
-            for m in sec['items']:
-                body += render_template_string(CARD_HTML, m=m)
+            body += f'''<section><div class="flex justify-between items-end mb-8"><h2 class="text-2xl md:text-3xl font-black italic uppercase border-l-4 border-rose-600 pl-4 tracking-tighter">{sec['title']}</h2><a href="{sec['link']}" class="text-rose-600 font-bold text-xs hover:underline">SEE ALL <i class="fa fa-arrow-right ml-1"></i></a></div><div class="card-grid">'''
+            for m in sec['items']: body += render_template_string(CARD_HTML, m=m)
             body += '</div></section>'
-    
-    if not movies and not tv_shows and not anime:
-        body += '<div class="h-[60vh] flex flex-col items-center justify-center text-zinc-500"><i class="fa fa-database text-6xl mb-4"></i><h2 class="text-2xl font-bold">DATABASE EMPTY!</h2><p>Sync from Admin Panel.</p></div>'
-        
     body += '</main>'
     return render_template_string(BASE_HEAD + body + "</body></html>")
 
-# --- ২. ক্যাটাগরি ভিউ পেজ (See More) ---
+# --- ২. ক্যাটাগরি ভিউ ---
 @app.route('/category/<ctype>')
 def category_view(ctype):
     if ctype == "anime":
@@ -130,33 +126,44 @@ def category_view(ctype):
         title = "ALL TV SHOWS"
 
     body = NAV_HTML + f'<main class="container mx-auto py-10 px-4"><h2 class="text-3xl font-black mb-10 italic uppercase border-l-4 border-rose-600 pl-4">{title}</h2><div class="card-grid">'
-    for m in items:
-        body += render_template_string(CARD_HTML, m=m)
+    for m in items: body += render_template_string(CARD_HTML, m=m)
     body += '</div></main>'
     return render_template_string(BASE_HEAD + body + "</body></html>")
 
-# --- ৩. ডিটেইল পেজ (ইউটিউব ট্রেলার এমবেড সহ) ---
+# --- ৩. ডিটেইল পেজ ---
 @app.route('/details/<tid>')
 def details(tid):
     m = collection.find_one({"tmdb_id": tid})
     if not m: return redirect('/')
+    ads = settings_col.find_one({"name": "ads"}) or {}
+    dl_links = m.get('dl_links', [])
     
-    body = NAV_HTML + """
+    body = NAV_HTML
+    if ads.get('details_ad'):
+        body += f'<div class="container mx-auto px-4 py-4 flex justify-center overflow-hidden">{ads["details_ad"]}</div>'
+
+    body += """
     <div class="relative min-h-screen pb-20">
         <div class="h-[50vh] md:h-[75vh] relative overflow-hidden">
             <img src="{{ m.backdrop }}" class="w-full h-full object-cover opacity-20 blur-[2px]">
             <div class="absolute inset-0 bg-gradient-to-t from-[#050505]"></div>
         </div>
-
         <div class="container mx-auto px-4 -mt-80 relative z-10">
             <div class="flex flex-col lg:flex-row gap-12">
                 <div class="w-64 md:w-96 flex-shrink-0 mx-auto lg:mx-0">
                     <img src="{{ m.poster }}" class="w-full rounded-[3.5rem] border border-zinc-700 shadow-2xl">
-                    {% if m.yt_id != "N/A" %}
-                    <a href="#trailer-section" class="mt-8 flex items-center justify-center gap-3 bg-red-600 py-5 rounded-3xl font-black shadow-xl hover:scale-105 transition text-white">
-                        <i class="fa fa-play text-xl"></i> SCROLL TO TRAILER
-                    </a>
-                    {% endif %}
+                    
+                    <!-- Download Section -->
+                    <div class="mt-8 space-y-4">
+                        <p class="text-center text-[10px] font-black text-rose-500 uppercase tracking-[0.3em] mb-2">Download Links</p>
+                        {% for dl in dl_links %}
+                        <a href="{{ dl.url }}" target="_blank" class="flex items-center justify-between bg-zinc-900 hover:bg-rose-600 p-5 rounded-3xl transition group border border-zinc-800">
+                            <span class="font-bold text-xs uppercase tracking-widest">{{ dl.label }}</span>
+                            <i class="fa fa-download text-rose-600 group-hover:text-white"></i>
+                        </a>
+                        {% endfor %}
+                        {% if not dl_links %}<p class="text-center text-zinc-500 text-xs italic">No links available yet.</p>{% endif %}
+                    </div>
                 </div>
 
                 <div class="flex-1">
@@ -181,54 +188,19 @@ def details(tid):
                             <p class="text-zinc-500 mb-1">Release</p><p class="text-white text-[11px]">{{ m.release_date }}</p>
                         </div>
                     </div>
-
-                    {% if m.ott %}
-                    <div class="p-6 bg-zinc-900/30 border border-zinc-800 rounded-[2.5rem] mb-10">
-                        <p class="text-xs font-black uppercase text-rose-500 mb-6 tracking-widest italic">Streaming Platforms (OTT)</p>
-                        <div class="flex flex-wrap gap-8">
-                            {% for ott in m.ott %}
-                            <div class="text-center"><img src="{{ ott.logo }}" class="w-14 h-14 rounded-2xl shadow-xl border border-zinc-800"><p class="text-[9px] mt-2 font-bold">{{ ott.name }}</p></div>
-                            {% endfor %}
-                        </div>
-                    </div>
-                    {% endif %}
                 </div>
             </div>
 
             {% if m.yt_id != "N/A" %}
-            <div id="trailer-section" class="mt-20">
+            <div class="mt-20">
                 <h3 class="text-3xl font-black mb-10 border-l-4 border-rose-600 pl-4 uppercase italic">Official Trailer</h3>
                 <div class="aspect-video w-full max-w-5xl mx-auto rounded-[3rem] overflow-hidden border border-zinc-800 shadow-2xl">
-                    <iframe class="w-full h-full" src="https://www.youtube.com/embed/{{ m.yt_id }}?rel=0" frameborder="0" allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture" allowfullscreen></iframe>
+                    <iframe class="w-full h-full" src="https://www.youtube.com/embed/{{ m.yt_id }}?rel=0" frameborder="0" allowfullscreen></iframe>
                 </div>
             </div>
             {% endif %}
 
-            <div class="mt-32">
-                <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Cast, Director & Producers</h3>
-                <div class="flex gap-10 overflow-x-auto pb-10 scroll-hide">
-                    <div class="min-w-[150px] text-center cursor-pointer group" onclick="showPersonDetail('{{ m.director.id }}')">
-                        <img src="{{ m.director.photo }}" class="w-32 h-32 rounded-full mx-auto object-cover border-4 border-rose-600 shadow-2xl group-hover:scale-105 transition">
-                        <p class="mt-4 font-black text-sm text-white">{{ m.director.name }}</p>
-                        <p class="text-[9px] text-rose-500 font-black uppercase">Director</p>
-                    </div>
-                    {% for p in m.producers %}
-                    <div class="min-w-[150px] text-center cursor-pointer group" onclick="showPersonDetail('{{ p.id }}')">
-                        <img src="{{ p.photo }}" class="w-32 h-32 rounded-full mx-auto object-cover border-4 border-zinc-800 group-hover:scale-105 transition">
-                        <p class="mt-4 font-black text-sm text-white">{{ p.name }}</p>
-                        <p class="text-[9px] text-zinc-500 font-black uppercase">Producer</p>
-                    </div>
-                    {% endfor %}
-                    {% for a in m.cast %}
-                    <div class="min-w-[150px] text-center cursor-pointer group" onclick="showPersonDetail('{{ a.id }}')">
-                        <img src="{{ a.photo }}" class="w-32 h-32 rounded-full mx-auto object-cover border-4 border-zinc-800 group-hover:scale-105 transition">
-                        <p class="mt-4 font-black text-sm text-white">{{ a.name }}</p>
-                        <p class="text-[9px] text-zinc-400 font-bold uppercase truncate px-2">{{ a.role }}</p>
-                    </div>
-                    {% endfor %}
-                </div>
-            </div>
-
+            <!-- Cast & Gallery Section -->
             <div class="mt-32">
                 <h3 class="text-3xl font-black mb-12 border-l-4 border-rose-600 pl-4 uppercase italic">Media Gallery</h3>
                 <div class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-6">
@@ -239,189 +211,199 @@ def details(tid):
             </div>
         </div>
     </div>
-
-    <div id="personModal" class="modal" onclick="this.style.display='none'">
-        <div class="bg-zinc-900 border border-zinc-800 p-8 rounded-[3.5rem] max-w-3xl w-full max-h-[85vh] overflow-y-auto relative shadow-2xl" onclick="event.stopPropagation()">
-            <div id="personContent" class="flex flex-col md:flex-row gap-8"></div>
-        </div>
-    </div>
-
-    <script>
-        async function showPersonDetail(id) {
-            const m = document.getElementById('personModal');
-            const c = document.getElementById('personContent');
-            m.style.display = 'flex';
-            c.innerHTML = '<div class="w-full text-center py-20 font-bold text-rose-600">Loading profile data...</div>';
-            try {
-                const r = await fetch('/api/person/' + id);
-                const d = await r.json();
-                c.innerHTML = `
-                    <img src="${d.photo}" class="w-64 h-80 object-cover rounded-[2.5rem] border border-zinc-700 shadow-2xl mx-auto">
-                    <div class="flex-1">
-                        <h2 class="text-4xl font-black text-rose-600 mb-2">${d.name}</h2>
-                        <p class="text-xs font-black text-zinc-500 uppercase tracking-[0.2em] mb-6">${d.job}</p>
-                        <div class="space-y-4 text-sm text-zinc-300">
-                            <p><strong>Born:</strong> ${d.birthday || 'Unknown'}</p>
-                            <p><strong>From:</strong> ${d.place || 'Unknown'}</p>
-                            <p class="leading-relaxed text-zinc-400 mt-6 pt-6 border-t border-zinc-800 italic">${d.bio || 'Biography not available for this person.'}</p>
-                        </div>
-                    </div>`;
-            } catch(e) { c.innerHTML = 'Failed to load details.'; }
-        }
-    </script>
     """
-    return render_template_string(BASE_HEAD + body + "</body></html>", m=m)
+    return render_template_string(BASE_HEAD + body + "</body></html>", m=m, dl_links=dl_links)
 
-# --- ৪. এডমিন কন্ট্রোল ---
+# --- ৪. এডমিন ড্যাশবোর্ড ---
 @app.route('/admin', methods=['GET', 'POST'])
 def admin():
     if request.method == 'POST' and request.form.get('pw') == ADMIN_PW:
         session['logged'] = True
         return redirect('/admin/dashboard')
     if session.get('logged'): return redirect('/admin/dashboard')
-    
-    body = """
-    <div class="h-[80vh] flex items-center justify-center px-4">
-        <form method="POST" class="bg-zinc-900 p-12 rounded-[4rem] border border-zinc-800 w-full max-w-sm shadow-2xl text-center">
-            <h2 class="text-3xl font-black mb-10 text-rose-600 uppercase italic tracking-widest">Admin Hub</h2>
-            <input type="password" name="pw" placeholder="Admin Password" class="w-full bg-black border border-zinc-700 p-5 rounded-3xl mb-6 text-center outline-none focus:border-rose-600 transition text-white">
-            <button class="w-full bg-rose-600 py-4 rounded-3xl font-black shadow-xl shadow-rose-900/20 text-white">LOGIN</button>
-        </form>
-    </div>
-    """
+    body = '<div class="h-screen flex items-center justify-center"><form method="POST" class="bg-zinc-900 p-12 rounded-[4rem] border border-zinc-800 w-full max-w-sm text-center shadow-2xl"><h2 class="text-2xl font-black mb-10 text-rose-600 italic tracking-widest">ADMIN HUB</h2><input type="password" name="pw" placeholder="Admin Password" class="w-full bg-black border border-zinc-700 p-5 rounded-3xl mb-6 text-center outline-none text-white focus:border-rose-600"><button class="w-full bg-rose-600 py-4 rounded-3xl font-black text-white shadow-lg">LOGIN</button></form></div>'
     return render_template_string(BASE_HEAD + body + "</body></html>")
 
 @app.route('/admin/dashboard')
 def dashboard():
     if not session.get('logged'): return redirect('/admin')
-    items = list(collection.find().sort('_id', -1))
     
+    stats = {
+        "movies": collection.count_documents({"type": "movie", "category": {"$ne": "Animation"}}),
+        "tv": collection.count_documents({"type": "tv", "category": {"$ne": "Animation"}}),
+        "anime": collection.count_documents({"category": "Animation", "language": "ja"}),
+        "drama": collection.count_documents({"category": "Drama"})
+    }
+    
+    ads = settings_col.find_one({"name": "ads"}) or {}
+    aq = request.args.get('aq')
+    items = list(collection.find({"title": {"$regex": aq, "$options": "i"}}).sort('_id', -1)) if aq else list(collection.find().sort('_id', -1).limit(15))
+
     body = NAV_HTML + """
     <div class="container mx-auto py-10 px-4 max-w-6xl pb-32">
         <div class="flex justify-between items-center mb-12 border-b border-zinc-800 pb-8">
-            <h1 class="text-4xl font-black italic tracking-tighter">CONTROL HUB</h1>
-            <a href="/logout" class="text-rose-500 font-bold hover:underline">LOGOUT</a>
+            <h1 class="text-4xl font-black italic tracking-tighter">DASHBOARD</h1>
+            <a href="/logout" class="text-rose-500 font-bold hover:underline uppercase text-xs">Logout</a>
         </div>
 
+        <!-- Stats -->
+        <div class="grid grid-cols-2 md:grid-cols-4 gap-6 mb-16">
+            <div class="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800 text-center shadow-xl">
+                <p class="text-zinc-500 text-[10px] font-black uppercase mb-3 tracking-widest">Movies</p>
+                <h3 class="text-4xl font-black text-blue-500">{{ stats.movies }}</h3>
+            </div>
+            <div class="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800 text-center shadow-xl">
+                <p class="text-zinc-500 text-[10px] font-black uppercase mb-3 tracking-widest">TV Series</p>
+                <h3 class="text-4xl font-black text-rose-500">{{ stats.tv }}</h3>
+            </div>
+            <div class="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800 text-center shadow-xl">
+                <p class="text-zinc-500 text-[10px] font-black uppercase mb-3 tracking-widest">Anime</p>
+                <h3 class="text-4xl font-black text-purple-500">{{ stats.anime }}</h3>
+            </div>
+            <div class="bg-zinc-900 p-8 rounded-[2.5rem] border border-zinc-800 text-center shadow-xl">
+                <p class="text-zinc-500 text-[10px] font-black uppercase mb-3 tracking-widest">Drama</p>
+                <h3 class="text-4xl font-black text-yellow-500">{{ stats.drama }}</h3>
+            </div>
+        </div>
+
+        <!-- Ads & Sync -->
         <div class="grid md:grid-cols-2 gap-10 mb-16">
-            <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl text-center">
-                <h3 class="text-xl font-bold mb-8 text-blue-500 uppercase tracking-widest italic">Unlimited Auto Sync</h3>
-                <div class="flex flex-col gap-4 mb-6">
-                    <input type="number" id="yr" placeholder="সাল (যেমন: 2024)" class="bg-black border border-zinc-700 p-4 rounded-3xl flex-1 outline-none text-white text-center">
-                    <input type="number" id="pg" placeholder="কয়টি পেজ? (যেমন: 10)" class="bg-black border border-zinc-700 p-4 rounded-3xl w-full outline-none text-white text-center">
-                    <select id="type" class="bg-black border border-zinc-700 p-4 rounded-3xl outline-none text-white text-center"><option value="movie">Movies</option><option value="tv">TV Shows</option></select>
-                </div>
-                <button onclick="startSync()" id="btn" class="w-full bg-blue-600 py-5 rounded-[2.5rem] font-black text-white text-xl">START UNLIMITED SYNC</button>
-                <div id="stat" class="mt-8 p-6 bg-black/50 rounded-2xl border border-zinc-800 text-[10px] font-mono text-zinc-500 uppercase hidden"></div>
+            <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl">
+                <h3 class="text-xl font-black mb-8 italic text-rose-600 uppercase tracking-widest">Ads Manager</h3>
+                <form action="/api/update_ads" method="POST" class="space-y-6">
+                    <textarea name="home_ad" placeholder="Home Ad Code" class="w-full bg-black border border-zinc-800 p-4 rounded-2xl h-24 text-zinc-400 font-mono text-[10px]">{{ ads.home_ad }}</textarea>
+                    <textarea name="details_ad" placeholder="Details Ad Code" class="w-full bg-black border border-zinc-800 p-4 rounded-2xl h-24 text-zinc-400 font-mono text-[10px]">{{ ads.details_ad }}</textarea>
+                    <button class="w-full bg-rose-600 py-4 rounded-3xl font-black text-white shadow-xl shadow-rose-900/20">SAVE ADS</button>
+                </form>
             </div>
             
-            <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl text-center">
-                <h3 class="text-xl font-bold mb-8 text-rose-500 uppercase tracking-widest italic">Manual ID Sync</h3>
-                <div class="flex flex-col gap-4 mb-6">
-                    <input type="text" id="m_id" placeholder="TMDB Content ID" class="bg-black border border-zinc-700 p-4 rounded-3xl outline-none text-white text-center">
-                    <select id="m_type" class="bg-black border border-zinc-700 p-4 rounded-3xl outline-none text-white text-center"><option value="movie">Movie</option><option value="tv">TV</option></select>
+            <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl">
+                <h3 class="text-xl font-black mb-8 italic text-blue-500 uppercase tracking-widest">Sync Content</h3>
+                <div class="space-y-4">
+                    <input type="text" id="m_id" placeholder="TMDB ID (e.g. 12345)" class="w-full bg-black border border-zinc-800 p-4 rounded-2xl text-white outline-none">
+                    <select id="m_type" class="w-full bg-black border border-zinc-800 p-4 rounded-2xl text-white">
+                        <option value="movie">Movie</option><option value="tv">TV Show</option>
+                    </select>
+                    <button onclick="manualSync()" class="w-full bg-blue-600 py-4 rounded-3xl font-black text-white shadow-xl shadow-blue-900/20">SYNC NOW</button>
                 </div>
-                <button onclick="manualSync()" id="m_btn" class="w-full bg-rose-600 py-5 rounded-[2.5rem] font-black text-white">SYNC ID NOW</button>
             </div>
         </div>
 
-        <div class="bg-zinc-900 rounded-[3.5rem] border border-zinc-800 overflow-hidden shadow-2xl">
-            <table class="w-full text-left text-sm uppercase font-black tracking-widest"><thead class="bg-zinc-800 text-zinc-500 font-black"><tr><th class="p-8">Content Name</th><th class="p-8 text-center">Action</th></tr></thead>
-            <tbody class="divide-y divide-zinc-800">
-                {% for i in items %}
-                <tr><td class="p-8 font-black text-lg text-white uppercase">{{ i.title }} <span class="text-zinc-600 ml-2 font-normal">({{ i.year }})</span></td>
-                <td class="p-8 text-center flex justify-center gap-6"><a href="/edit/{{ i.tmdb_id }}" class="text-blue-500 text-xl hover:scale-125 transition inline-block"><i class="fa fa-edit"></i></a><a href="/del/{{ i.tmdb_id }}" onclick="return confirm('Delete?')" class="text-rose-500 text-xl hover:scale-125 transition inline-block"><i class="fa fa-trash-alt"></i></a></td></tr>
-                {% endfor %}
-            </tbody></table>
+        <!-- Content Search & List -->
+        <div class="bg-zinc-900 p-10 rounded-[3.5rem] border border-zinc-800 shadow-2xl">
+            <div class="flex justify-between items-center mb-8">
+                <h3 class="text-xl font-black italic text-green-500 uppercase tracking-widest">Manage Content</h3>
+                <form method="GET" class="flex bg-black border border-zinc-800 rounded-full px-4 py-2">
+                    <input type="text" name="aq" placeholder="Search to edit..." class="bg-transparent outline-none text-xs text-white">
+                    <button><i class="fa fa-search text-zinc-600"></i></button>
+                </form>
+            </div>
+            <div class="overflow-hidden">
+                <table class="w-full text-left">
+                    <thead class="text-zinc-500 font-black uppercase text-[10px] border-b border-zinc-800">
+                        <tr><th class="py-4">Title</th><th class="py-4 text-center">Action</th></tr>
+                    </thead>
+                    <tbody class="divide-y divide-zinc-800">
+                        {% for i in items %}
+                        <tr>
+                            <td class="py-6 font-bold text-xs">{{ i.title }} <span class="text-zinc-600 ml-2 font-normal">({{ i.year }})</span></td>
+                            <td class="py-6 text-center space-x-6">
+                                <a href="/edit/{{ i.tmdb_id }}" class="text-blue-500 text-sm font-black hover:underline">EDIT/LINKS</a>
+                                <a href="/del/{{ i.tmdb_id }}" onclick="return confirm('Delete?')" class="text-rose-500 text-sm font-black hover:underline">DELETE</a>
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
         </div>
     </div>
-
     <script>
-    async function startSync() {
-        const yr = document.getElementById('yr').value;
-        const pg = document.getElementById('pg').value || 1;
-        const t = document.getElementById('type').value;
-        const b = document.getElementById('btn');
-        const s = document.getElementById('stat');
-        if(!yr) return alert('Enter Year!');
-        b.disabled = true; s.classList.remove('hidden');
-        for(let p=1; p <= pg; p++) {
-            s.innerHTML = 'Fetching IDs Page ' + p + '...';
-            const res = await fetch(`/api/get_ids?year=${yr}&page=${p}&type=${t}`);
-            const data = await res.json();
-            for(let item of data.ids) {
-                s.innerHTML = 'Auto Saving: ' + item.title;
-                await fetch(`/api/sync_single?id=${item.id}&type=${t}`);
-            }
-        }
-        s.innerHTML = 'ALL SYNCED! RELOADING...'; location.reload();
-    }
     async function manualSync() {
         const id = document.getElementById('m_id').value;
         const t = document.getElementById('m_type').value;
         if(!id) return alert('Enter ID!');
+        const btn = event.target; btn.disabled = true; btn.innerHTML = "Syncing...";
         await fetch(`/api/sync_single?id=${id}&type=${t}`);
         location.reload();
     }
     </script>
     """
-    return render_template_string(BASE_HEAD + body + "</body></html>", items=items)
+    return render_template_string(BASE_HEAD + body + "</body></html>", stats=stats, ads=ads, items=items)
 
-# --- ৫. ইন্টারনাল স্ক্র্যাপিং ইঞ্জিন এপিআই ---
+# --- ৫. এডিট ও লিঙ্কস সিস্টেম ---
+@app.route('/edit/<tid>', methods=['GET', 'POST'])
+def edit(tid):
+    if not session.get('logged'): return redirect('/admin')
+    m = collection.find_one({"tmdb_id": tid})
+    if not m: return redirect('/admin/dashboard')
+    
+    if request.method == 'POST':
+        title = request.form.get('t')
+        story = request.form.get('s')
+        links_raw = request.form.get('links').strip().split('\n')
+        dl_links = []
+        for line in links_raw:
+            if '|' in line:
+                lbl, url = line.split('|')
+                dl_links.append({"label": lbl.strip(), "url": url.strip()})
+        
+        collection.update_one({"tmdb_id": tid}, {"$set": {"title": title, "story": story, "dl_links": dl_links}})
+        return redirect('/admin/dashboard')
 
-@app.route('/api/person/<id>')
-def api_person(id):
-    url = f"https://api.themoviedb.org/3/person/{id}?api_key={TMDB_API_KEY}"
-    d = requests.get(url).json()
-    return jsonify({
-        "name": d.get('name'), "photo": IMG_BASE + d.get('profile_path') if d.get('profile_path') else "https://via.placeholder.com/200",
-        "bio": d.get('biography'), "birthday": d.get('birthday'), "place": d.get('place_of_birth'), "job": d.get('known_for_department')
-    })
+    links_str = "\n".join([f"{l['label']} | {l['url']}" for l in m.get('dl_links', [])])
+    body = f"""
+    <div class="container mx-auto py-20 px-4 max-w-2xl">
+        <form method="POST" class="bg-zinc-900 p-12 rounded-[4rem] border border-zinc-800 shadow-2xl">
+            <h2 class="text-2xl font-black mb-10 italic uppercase text-rose-600 border-l-4 border-rose-600 pl-4">Edit Content</h2>
+            <div class="space-y-8">
+                <div><label class="text-[10px] font-black text-zinc-500 uppercase mb-2 block ml-4">Title</label>
+                <input name="t" value="{m['title']}" class="w-full bg-black border border-zinc-800 p-5 rounded-3xl text-white outline-none focus:border-blue-600"></div>
+                
+                <div><label class="text-[10px] font-black text-zinc-500 uppercase mb-2 block ml-4">Story</label>
+                <textarea name="s" class="w-full bg-black border border-zinc-800 p-5 rounded-3xl text-white h-40 outline-none focus:border-blue-600 leading-relaxed">{m['story']}</textarea></div>
+                
+                <div><label class="text-[10px] font-black text-zinc-500 uppercase mb-2 block ml-4">Download Links (Format: Label | Link)</label>
+                <textarea name="links" class="w-full bg-black border border-zinc-800 p-5 rounded-3xl text-blue-400 font-mono text-xs h-48 outline-none focus:border-blue-600" placeholder="720p Bluray | https://link.com">{links_str}</textarea></div>
+                
+                <button class="w-full bg-blue-600 py-5 rounded-[2.5rem] font-black text-white shadow-xl shadow-blue-900/20 uppercase tracking-widest">Update Now</button>
+            </div>
+        </form>
+    </div>
+    """
+    return render_template_string(BASE_HEAD + body + "</body></html>")
 
-@app.route('/api/get_ids')
-def get_ids():
-    y, p, t = request.args.get('year'), request.args.get('page', 1), request.args.get('type', 'movie')
-    url = f"https://api.themoviedb.org/3/discover/{t}?api_key={TMDB_API_KEY}&primary_release_year={y}&first_air_date_year={y}&sort_by=popularity.desc&page={p}"
-    res = requests.get(url).json().get('results', [])
-    return jsonify({"ids": [{"id": m['id'], "title": m.get('title') or m.get('name')} for m in res]})
+# --- ৬. API ও ব্যাকএন্ড লজিক ---
+
+@app.route('/api/update_ads', methods=['POST'])
+def update_ads():
+    if not session.get('logged'): return redirect('/admin')
+    settings_col.update_one({"name": "ads"}, {"$set": {"home_ad": request.form.get('home_ad'), "details_ad": request.form.get('details_ad')}}, upsert=True)
+    return redirect('/admin/dashboard')
 
 @app.route('/api/sync_single')
 def sync_single():
     tid, mtype = request.args.get('id'), request.args.get('type')
-    url = f"https://api.themoviedb.org/3/{mtype}/{tid}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,images,watch/providers"
+    url = f"https://api.themoviedb.org/3/{mtype}/{tid}?api_key={TMDB_API_KEY}&append_to_response=credits,videos,images"
     d = requests.get(url).json()
 
     crew = d.get('credits', {}).get('crew', [])
-    director = next(({"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150"} for p in crew if p['job'] == 'Director'), {"id": 0, "name": "N/A", "photo": ""})
-    producers = [{"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150"} for p in crew if p['job'] in ['Producer', 'Executive Producer']][:4]
-    cast = [{"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "https://via.placeholder.com/150", "role": p['character']} for p in d.get('credits', {}).get('cast', [])[:20]]
-
-    ott = [{"name": prov['provider_name'], "logo": IMG_BASE + prov['logo_path']} for prov in d.get('watch/providers', {}).get('results', {}).get('US', {}).get('flatrate', [])]
-    
+    director = next(({"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else ""} for p in crew if p['job'] == 'Director'), {"id": 0, "name": "N/A", "photo": ""})
+    cast = [{"id": p['id'], "name": p['name'], "photo": IMG_BASE + p['profile_path'] if p['profile_path'] else "", "role": p['character']} for p in d.get('credits', {}).get('cast', [])[:15]]
     ytid = next((v['key'] for v in d.get('videos', {}).get('results', []) if v['type'] == 'Trailer'), "N/A")
-    gallery = [IMG_ORIG + i['file_path'] for i in d.get('images', {}).get('posters', [])[:10]] + [IMG_ORIG + i['file_path'] for i in d.get('images', {}).get('backdrops', [])[:10]]
+    gallery = [IMG_ORIG + i['file_path'] for i in d.get('images', {}).get('backdrops', [])[:12]]
 
     save_data = {
         "tmdb_id": str(tid), "type": mtype, "title": d.get('title') or d.get('name'),
         "year": (d.get('release_date') or d.get('first_air_date', "0000"))[:4],
         "rating": round(d.get('vote_average', 0), 1), "story": d.get('overview'),
         "language": d.get('original_language'), "release_date": d.get('release_date') or d.get('first_air_date'),
-        "category": [g['name'] for g in d.get('genres', [])], "director": director, "producers": producers, "cast": cast,
-        "ott": ott, "yt_id": ytid, "poster": IMG_ORIG + d.get('poster_path'),
+        "category": [g['name'] for g in d.get('genres', [])], "director": director, "cast": cast,
+        "yt_id": ytid, "poster": IMG_ORIG + d.get('poster_path') if d.get('poster_path') else "",
         "backdrop": IMG_ORIG + (d.get('backdrop_path') if d.get('backdrop_path') else d.get('poster_path')), "gallery": gallery
     }
     collection.update_one({"tmdb_id": str(tid)}, {"$set": save_data}, upsert=True)
     return jsonify({"status": "ok"})
-
-@app.route('/edit/<tid>', methods=['GET', 'POST'])
-def edit(tid):
-    if not session.get('logged'): return redirect('/admin')
-    m = collection.find_one({"tmdb_id": tid})
-    if request.method == 'POST':
-        collection.update_one({"tmdb_id": tid}, {"$set": {"title": request.form.get('t'), "story": request.form.get('s')}})
-        return redirect('/admin/dashboard')
-    body = f"""<div class="h-[80vh] flex items-center justify-center px-4"><form method="POST" class="bg-zinc-900 p-10 rounded-[3rem] w-full max-w-xl shadow-2xl text-white"><h2 class="text-2xl font-black mb-6 italic">Edit: {m['title']}</h2><input name="t" value="{m['title']}" class="w-full bg-black p-4 rounded-2xl mb-4 text-white outline-none"><textarea name="s" class="w-full bg-black p-4 rounded-2xl mb-4 h-40 text-white outline-none">{m['story']}</textarea><button class="w-full bg-blue-600 py-4 rounded-2xl font-black">UPDATE CONTENT</button></form></div>"""
-    return render_template_string(BASE_HEAD + body + "</body></html>")
 
 @app.route('/del/<tid>')
 def delete(tid):
