@@ -1,11 +1,5 @@
-Flask
-pymongo
-requests
-pyTelegramBotAPI
-Werkzeug
-dnspython
 flask
+pymongo
 pyrogram
 tgcrypto
-pymongo
 dnspython
