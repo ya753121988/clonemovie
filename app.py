@@ -6,244 +6,267 @@ import uuid
 
 app = Flask(__name__)
 
-# --- MongoDB Configuration ---
-# Vercel Environment Variable থেকে MONGO_URI নিবে
+# --- MongoDB Setup ---
 MONGO_URI = os.getenv("MONGO_URI", "mongodb+srv://Demo270:Demo270@cluster0.ls1igsg.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0")
 client = MongoClient(MONGO_URI)
-db = client['ludo_database']
+db = client['ludo_premium']
 rooms = db['rooms']
 
-# --- HTML/CSS/JS (Frontend) ---
+# --- HTML/CSS/JS (Premium UI + Logic) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
-<html>
+<html lang="bn">
 <head>
-    <title>Online Multiplayer Ludo</title>
+    <meta charset="UTF-8">
+    <title>Premium Ludo Online - Multiplayer & Robot</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
-        body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; text-align: center; background: #2c3e50; color: white; }
-        .container { max-width: 600px; margin: auto; padding: 20px; }
-        #board { 
-            width: 320px; height: 320px; margin: 20px auto; 
-            display: grid; grid-template-columns: repeat(15, 1fr); 
-            grid-template-rows: repeat(15, 1fr); background: #ecf0f1; border: 5px solid #34495e;
+        :root {
+            --red: #ff3838; --blue: #17c0eb; --green: #32ff7e; --yellow: #fff200;
+            --bg: #1e272e; --white: #ffffff;
         }
-        .cell { border: 1px solid #bdc3c7; width: 20px; height: 20px; }
-        .red { background: #e74c3c; } .blue { background: #3498db; }
-        .green { background: #2ecc71; } .yellow { background: #f1c40f; }
-        .dice-box { background: #fff; color: #333; padding: 15px; border-radius: 10px; display: inline-block; margin: 10px; }
-        button { padding: 10px 20px; font-size: 16px; cursor: pointer; border-radius: 5px; border: none; background: #e67e22; color: white; }
-        .status-bar { margin: 15px; font-weight: bold; font-size: 1.2em; }
+        body { font-family: 'Poppins', sans-serif; background: var(--bg); color: white; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; overflow-x: hidden; }
+        .container { width: 100%; max-width: 500px; text-align: center; padding: 10px; }
+        
+        /* Premium Ludo Board Design */
+        #ludo-board {
+            width: 95vw; height: 95vw; max-width: 450px; max-height: 450px;
+            margin: 15px auto; background: #fff; border: 8px solid #333;
+            display: grid; grid-template-columns: repeat(15, 1fr); grid-template-rows: repeat(15, 1fr);
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); position: relative;
+        }
+        .cell { border: 0.1px solid #ddd; position: relative; }
+        
+        /* Home Squares */
+        .home-red { grid-column: 1/7; grid-row: 1/7; background: var(--red); border: 20px solid white; box-sizing: border-box; }
+        .home-green { grid-column: 10/16; grid-row: 1/7; background: var(--green); border: 20px solid white; box-sizing: border-box; }
+        .home-blue { grid-column: 1/7; grid-row: 10/16; background: var(--blue); border: 20px solid white; box-sizing: border-box; }
+        .home-yellow { grid-column: 10/16; grid-row: 10/16; background: var(--yellow); border: 20px solid white; box-sizing: border-box; }
+        .center-square { grid-column: 7/10; grid-row: 7/10; background: conic-gradient(var(--red) 25%, var(--green) 0 50%, var(--yellow) 0 75%, var(--blue) 0); }
+
+        /* Path Coloring */
+        .path-red { background: var(--red); } .path-green { background: var(--green); }
+        .path-blue { background: var(--blue); } .path-yellow { background: var(--yellow); }
+        .safe-spot { background: #ccc !important; } .safe-spot::after { content: '★'; color: white; font-size: 12px; }
+
+        /* Pawns (গুটি) */
+        .pawn {
+            width: 70%; height: 70%; border-radius: 50%; border: 2px solid #000;
+            position: absolute; top: 15%; left: 15%; z-index: 10;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3); transition: all 0.3s;
+        }
+        .pawn-red { background: var(--red); } .pawn-blue { background: var(--blue); }
+        
+        /* UI Controls */
+        .dice-area { display: flex; justify-content: space-around; align-items: center; background: rgba(255,255,255,0.1); padding: 15px; border-radius: 15px; }
+        #dice { width: 60px; height: 60px; background: white; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 30px; color: #333; font-weight: bold; cursor: pointer; border: 4px solid #aaa; }
+        .btn { padding: 10px 20px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; transition: 0.3s; }
+        .btn-primary { background: #32ff7e; color: #1e272e; }
+        .status-msg { margin: 10px; font-size: 1.1em; color: var(--green); font-weight: bold; }
     </style>
 </head>
 <body>
-    <div class="container">
-        <h1>Ludo Online 🎲</h1>
-        <div id="setup">
-            <input type="text" id="playerName" placeholder="আপনার নাম লিখুন">
-            <select id="gameMode">
-                <option value="1v1">1 vs 1</option>
-                <option value="2v2">2 vs 2 (Team)</option>
-                <option value="4way">1 vs 1 vs 1 vs 1</option>
-            </select>
-            <button onclick="createRoom()">নতুন গেম শুরু করুন</button>
-            <br><br>
-            <input type="text" id="roomInput" placeholder="রুম আইডি লিখুন">
-            <button onclick="joinRoom()">রুমে জয়েন করুন</button>
-        </div>
 
-        <div id="gameArea" style="display:none;">
-            <div class="status-bar" id="status">প্লেয়ারের জন্য অপেক্ষা করা হচ্ছে...</div>
-            <p>রুম আইডি: <span id="displayRoomId" style="color:#f1c40f"></span></p>
-            
-            <div id="board">
-                <!-- বোর্ডে গ্রিড লজিক জাভাস্ক্রিপ্ট দিয়ে জেনারেট হবে -->
-            </div>
-
-            <div class="dice-box">
-                <div id="diceResult" style="font-size: 30px; margin-bottom: 10px;">🎲</div>
-                <button id="rollBtn" onclick="rollDice()">চাল দিন (Roll)</button>
-            </div>
-        </div>
+<div class="container">
+    <div id="lobby">
+        <h2 style="color:var(--yellow)">Ludo Premium Online</h2>
+        <input type="text" id="playerName" placeholder="আপনার নাম" style="padding:10px; border-radius:5px; width:80%"><br><br>
+        <select id="gameMode" style="padding:10px; width:85%">
+            <option value="robot">🤖 বনাম রোবট (Play with AI)</option>
+            <option value="1v1">👥 ১ বনাম ১ (Multiplayer)</option>
+            <option value="4way">👨‍👩‍👧‍👦 ৪ জন প্লেয়ার (Multiplayer)</option>
+        </select><br><br>
+        <button class="btn btn-primary" onclick="startNewGame()">গেম শুরু করুন</button>
+        <p>অথবা রুম আইডিতে জয়েন করুন:</p>
+        <input type="text" id="roomInput" placeholder="Room ID">
+        <button onclick="joinRoom()" class="btn">জয়েন</button>
     </div>
 
-    <script>
-        let roomId = null;
-        let myId = null;
-        let myColor = null;
-        let isMyTurn = false;
+    <div id="game-ui" style="display:none">
+        <div class="status-msg" id="msg">রুমের জন্য অপেক্ষা করুন...</div>
+        <div id="ludo-board">
+            <div class="home-red"></div><div class="home-green"></div>
+            <div class="home-blue"></div><div class="home-yellow"></div>
+            <div class="center-square"></div>
+            <!-- Cells will be generated by JS -->
+        </div>
+        <div class="dice-area">
+            <div>
+                <p id="p_name">Player</p>
+                <div id="dice" onclick="rollDice()">🎲</div>
+            </div>
+            <button class="btn" style="background:var(--red)" onclick="location.reload()">Exit</button>
+        </div>
+        <p>Room ID: <b id="roomIdDisplay" style="color:var(--yellow)"></b></p>
+    </div>
+</div>
 
-        async function createRoom() {
-            const name = document.getElementById('playerName').value;
-            const mode = document.getElementById('gameMode').value;
-            const res = await fetch('/create_room', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name, mode})
-            });
-            const data = await res.json();
-            roomId = data.room_id;
-            myId = data.player_id;
-            myColor = data.color;
-            startGameUI();
-        }
+<script>
+    let roomId = null;
+    let myId = null;
+    let myColor = null;
+    let turnColor = 'red';
+    let isRobotMode = false;
 
-        async function joinRoom() {
-            const name = document.getElementById('playerName').value;
-            const rId = document.getElementById('roomInput').value;
-            const res = await fetch('/join_room', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({name, room_id: rId})
-            });
-            const data = await res.json();
-            if(data.error) return alert(data.error);
-            roomId = rId;
-            myId = data.player_id;
-            myColor = data.color;
-            startGameUI();
-        }
+    async function startNewGame() {
+        const name = document.getElementById('playerName').value || "Player";
+        const mode = document.getElementById('gameMode').value;
+        const res = await fetch('/create_room', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, mode})
+        });
+        const data = await res.json();
+        setupGame(data, name);
+    }
 
-        function startGameUI() {
-            document.getElementById('setup').style.display = 'none';
-            document.getElementById('gameArea').style.display = 'block';
-            document.getElementById('displayRoomId').innerText = roomId;
-            initBoard();
-            setInterval(fetchGameState, 2000); // Polling every 2 seconds
-        }
+    async function joinRoom() {
+        const name = document.getElementById('playerName').value || "Guest";
+        const rId = document.getElementById('roomInput').value;
+        const res = await fetch('/join_room', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({name, room_id: rId})
+        });
+        const data = await res.json();
+        if(data.error) return alert(data.error);
+        setupGame(data, name);
+    }
 
-        function initBoard() {
-            const board = document.getElementById('board');
-            board.innerHTML = '';
-            for (let i = 0; i < 225; i++) {
-                const div = document.createElement('div');
-                div.className = 'cell';
-                board.appendChild(div);
-            }
-        }
+    function setupGame(data, name) {
+        roomId = data.room_id;
+        myId = data.player_id;
+        myColor = data.color;
+        isRobotMode = (data.mode === 'robot');
+        document.getElementById('lobby').style.display = 'none';
+        document.getElementById('game-ui').style.display = 'block';
+        document.getElementById('roomIdDisplay').innerText = roomId;
+        document.getElementById('p_name').innerText = name + " (" + myColor + ")";
+        initBoard();
+        setInterval(updateGameState, 2000);
+    }
 
-        async function fetchGameState() {
-            if(!roomId) return;
-            const res = await fetch(`/get_state?room_id=${roomId}`);
-            const data = await res.json();
-            
-            const status = document.getElementById('status');
-            if(data.status === 'waiting') {
-                status.innerText = "প্লেয়ারের জন্য অপেক্ষা করুন...";
-            } else {
-                status.innerText = `এখন চাল: ${data.turn_color.toUpperCase()}`;
-                isMyTurn = (data.turn_color === myColor);
-                document.getElementById('rollBtn').disabled = !isMyTurn;
-                document.getElementById('diceResult').innerText = data.last_roll || '🎲';
-            }
-        }
+    function initBoard() {
+        // Logic to draw board path and safe spots
+        const board = document.getElementById('ludo-board');
+        // Simple visualization - in real case, we place pawn divs
+    }
 
-        async function rollDice() {
-            if(!isMyTurn) return;
-            const res = await fetch('/roll', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({room_id: roomId, player_id: myId})
-            });
-            const data = await res.json();
-            document.getElementById('diceResult').innerText = data.roll;
-            fetchGameState();
+    async function rollDice() {
+        if(turnColor !== myColor) return alert("আপনার চালের জন্য অপেক্ষা করুন!");
+        const res = await fetch('/roll', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({room_id: roomId, player_id: myId})
+        });
+        const data = await res.json();
+        document.getElementById('dice').innerText = data.roll;
+        
+        if(isRobotMode && data.next_turn === 'robot') {
+            setTimeout(robotRoll, 2000);
         }
-    </script>
+    }
+
+    async function robotRoll() {
+        const res = await fetch('/roll_robot', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({room_id: roomId})
+        });
+        const data = await res.json();
+        document.getElementById('dice').innerText = data.roll;
+    }
+
+    async function updateGameState() {
+        if(!roomId) return;
+        const res = await fetch(`/get_state?room_id=${roomId}`);
+        const data = await res.json();
+        turnColor = data.turn_color;
+        document.getElementById('msg').innerText = "টার্ন: " + turnColor.toUpperCase();
+        if(data.last_roll) document.getElementById('dice').innerText = data.last_roll;
+    }
+</script>
 </body>
 </html>
 """
 
-# --- API Routes ---
+# --- Routes ---
 
 @app.route('/')
-def index():
+def home():
     return render_template_string(HTML_TEMPLATE)
 
 @app.route('/create_room', methods=['POST'])
 def create_room():
     data = request.json
     room_id = str(uuid.uuid4())[:6].upper()
-    mode = data.get('mode', '1v1')
+    mode = data['mode']
     
+    players = [{"id": "p1", "name": data['name'], "color": "red", "type": "human"}]
+    if mode == 'robot':
+        players.append({"id": "robot", "name": "Robot AI", "color": "blue", "type": "robot"})
+        status = "active"
+    else:
+        status = "waiting"
+
     room_data = {
         "room_id": room_id,
         "mode": mode,
-        "status": "waiting",
-        "players": [{"id": "p1", "name": data['name'], "color": "red"}],
+        "status": status,
+        "players": players,
         "turn": 0,
         "turn_color": "red",
-        "last_roll": 0,
-        "positions": {"red": [0,0,0,0], "blue": [0,0,0,0], "green": [0,0,0,0], "yellow": [0,0,0,0]}
+        "last_roll": 0
     }
     rooms.insert_one(room_data)
-    return jsonify({"room_id": room_id, "player_id": "p1", "color": "red"})
+    return jsonify({"room_id": room_id, "player_id": "p1", "color": "red", "mode": mode})
 
 @app.route('/join_room', methods=['POST'])
 def join_room():
     data = request.json
     room = rooms.find_one({"room_id": data['room_id']})
-    if not room: return jsonify({"error": "রুম পাওয়া যায়নি!"})
+    if not room: return jsonify({"error": "রুম পাওয়া যায়নি"})
     
     colors = ["red", "blue", "green", "yellow"]
-    p_count = len(room['players'])
+    p_idx = len(room['players'])
     
-    # Mode check
-    limit = 2 if room['mode'] == '1v1' else 4
-    if p_count >= limit: return jsonify({"error": "রুম ফুল!"})
+    new_player = {"id": f"p{p_idx+1}", "name": data['name'], "color": colors[p_idx], "type": "human"}
+    rooms.update_one({"room_id": data['room_id']}, {"$push": {"players": new_player}, "$set": {"status": "active"}})
     
-    new_player = {
-        "id": f"p{p_count+1}",
-        "name": data['name'],
-        "color": colors[p_count]
-    }
-    
-    new_status = "active" if p_count + 1 == limit else "waiting"
-    
-    rooms.update_one(
-        {"room_id": data['room_id']},
-        {"$push": {"players": new_player}, "$set": {"status": new_status}}
-    )
-    return jsonify({"player_id": new_player['id'], "color": new_player['color']})
+    return jsonify({"room_id": room['room_id'], "player_id": new_player['id'], "color": new_player['color']})
 
 @app.route('/get_state', methods=['GET'])
 def get_state():
-    room_id = request.args.get('room_id')
-    room = rooms.find_one({"room_id": room_id}, {"_id": 0})
+    room = rooms.find_one({"room_id": request.args.get('room_id')}, {"_id": 0})
     return jsonify(room)
 
 @app.route('/roll', methods=['POST'])
 def roll():
     data = request.json
     room = rooms.find_one({"room_id": data['room_id']})
+    roll_val = random.randint(1, 6)
     
-    # সঠিক প্লেয়ার চাল দিচ্ছে কি না চেক
-    current_player_idx = room['turn']
-    if room['players'][current_player_idx]['id'] != data['player_id']:
-        return jsonify({"error": "Not your turn"})
+    # Switch Turn
+    curr_idx = room['turn']
+    next_idx = (curr_idx + 1) % len(room['players']) if roll_val != 6 else curr_idx
+    
+    rooms.update_one({"room_id": data['room_id']}, {
+        "$set": {"last_roll": roll_val, "turn": next_idx, "turn_color": room['players'][next_idx]['color']}
+    })
+    return jsonify({"roll": roll_val, "next_turn": room['players'][next_idx]['id']})
 
-    dice_roll = random.randint(1, 6)
+@app.route('/roll_robot', methods=['POST'])
+def roll_robot():
+    data = request.json
+    room = rooms.find_one({"room_id": data['room_id']})
+    roll_val = random.randint(1, 6)
     
-    # পরবর্তী টার্ন সেট করা (যদি ৬ না পড়ে)
-    next_turn = current_player_idx
-    if dice_roll != 6:
-        next_turn = (current_player_idx + 1) % len(room['players'])
-    
-    # ২ বনাম ২ টিমের চাল স্কিপ করার লজিক (ঐচ্ছিক)
-    # (Team 1 = 0 & 2 index, Team 2 = 1 & 3 index)
-
-    rooms.update_one(
-        {"room_id": data['room_id']},
-        {
-            "$set": {
-                "last_roll": dice_roll,
-                "turn": next_turn,
-                "turn_color": room['players'][next_turn]['color']
-            }
-        }
-    )
-    
-    return jsonify({"roll": dice_roll})
+    # Robot rolls and switches turn back to human
+    next_idx = 0 # Back to Player 1
+    rooms.update_one({"room_id": data['room_id']}, {
+        "$set": {"last_roll": roll_val, "turn": next_idx, "turn_color": room['players'][next_idx]['color']}
+    })
+    return jsonify({"roll": roll_val})
 
 if __name__ == '__main__':
     app.run(debug=True)
