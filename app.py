@@ -4,150 +4,229 @@ import requests
 from pymongo import MongoClient
 from flask import Flask
 from threading import Thread
+import time
+from datetime import datetime
 
-# --- আপনার দেওয়া তথ্যসমূহ ---
+# --- কনফিগারেশন (আপনার দেওয়া তথ্য) ---
 BOT_TOKEN = "8773638161:AAFCdZeOCp6mzGbNcV2QeRpp0j09Gtu-I5o"
 PEAKERR_API_KEY = "2de9db5d595a2e304699565d9745d492"
 PEAKERR_API_URL = "https://peakerr.com/api/v2"
 MONGO_URI = "mongodb+srv://roxiw19528:roxiw19528@cluster0.vl508y4.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0"
 ADMIN_ID = 7120801813
 
-# প্রফিট সেটআপ (১০০০ মেম্বারের জন্য আপনি কত টাকা চার্জ করবেন)
-# পিক্যারের রেট অনুযায়ী এখানে আপনার লাভ যোগ করে একটি গড় রেট বসান
-RATE_PER_1000 = 25  # উদাহরণ: ১০০০ মেম্বার ২৫ টাকা (এটি আপনার ইচ্ছেমতো পরিবর্তন করুন)
+# ডলার টু টাকা কনভার্টার (আপনার লাভসহ)
+# Peakerr এর রেট যদি $1 হয়, আপনি কাস্টমারের থেকে ১২০ টাকা নিবেন।
+DOLLAR_TO_BDT = 120 
 
-# বট এবং ডাটাবেস কানেকশন
-bot = telebot.TeleBot(BOT_TOKEN)
-client = MongoClient(MONGO_URI)
-db = client['smm_database']
-users_col = db['users']
-
-# ফ্লাস্ক অ্যাপ (বটকে সচল রাখতে)
+bot = telebot.TeleBot(BOT_TOKEN, parse_mode="HTML")
 app = Flask('')
 
+# --- ডাটাবেস কানেকশন ---
+try:
+    client = MongoClient(MONGO_URI, serverSelectionTimeoutMS=5000)
+    db = client['smm_panel_db']
+    users_col = db['users']
+    orders_col = db['orders']
+    print("✅ MongoDB কানেক্টেড!")
+except Exception as e:
+    print(f"❌ MongoDB এরর: {e}")
+
+# --- ইউজার ম্যানেজমেন্ট ফাংশন ---
+def get_user(user_id, username="Unknown"):
+    user = users_col.find_one({"user_id": user_id})
+    if not user:
+        user = {
+            "user_id": user_id,
+            "username": username,
+            "balance": 0.0,
+            "total_spent": 0.0,
+            "join_date": datetime.now().strftime("%Y-%m-%d")
+        }
+        users_col.insert_one(user)
+    return user
+
+def update_balance(user_id, amount):
+    users_col.update_one({"user_id": user_id}, {"$inc": {"balance": amount}}, upsert=True)
+
+# --- কিবোর্ড মেনু ---
+def main_menu():
+    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
+    markup.row("🛒 অর্ডার করুন", "📊 সার্ভিস লিস্ট")
+    markup.row("👤 প্রোফাইল", "💰 রিচার্জ")
+    markup.row("📜 অর্ডার হিস্ট্রি", "📞 সাপোর্ট")
+    return markup
+
+# --- ফ্লাস্ক রুট (Koyeb এর জন্য) ---
 @app.route('/')
 def home():
-    return "Bot is Running!"
+    return "SMM Bot is Active!"
 
 def run_flask():
     app.run(host='0.0.0.0', port=8080)
 
-# --- ডাটাবেস ফাংশন ---
-def get_user_data(user_id):
-    user = users_col.find_one({"user_id": user_id})
-    if not user:
-        user = {"user_id": user_id, "balance": 0.0}
-        users_col.insert_one(user)
-    return user
-
-def update_user_balance(user_id, amount):
-    users_col.update_one({"user_id": user_id}, {"$inc": {"balance": amount}}, upsert=True)
-
-# --- বট হ্যান্ডলারস ---
+# --- কমান্ড হ্যান্ডলারস ---
 
 @bot.message_handler(commands=['start'])
-def send_welcome(message):
-    get_user_data(message.from_user.id)
-    markup = telebot.types.ReplyKeyboardMarkup(resize_keyboard=True)
-    markup.add("👤 প্রোফাইল", "🛒 অর্ডার করুন")
-    markup.add("💰 ব্যালেন্স রিচার্জ", "📊 সার্ভিস লিস্ট")
-    
-    bot.send_message(
-        message.chat.id, 
-        "👋 স্বাগতম! আমাদের অটোমেটিক SMM প্যানেল বটে।\nএখান থেকে আপনি সস্তায় টেলিগ্রাম সার্ভিস নিতে পারবেন।", 
-        reply_markup=markup
+def start(message):
+    get_user(message.from_user.id, message.from_user.username)
+    welcome_text = (
+        f"👋 <b>স্বাগতম, {message.from_user.first_name}!</b>\n\n"
+        "এটি একটি অটোমেটিক SMM প্যানেল বট। এখান থেকে আপনি টেলিগ্রাম মেম্বার, "
+        "ভিউ, রিয়েকশন ইত্যাদি সস্তায় কিনতে পারবেন।\n\n"
+        "নিচের মেনু থেকে আপনার পছন্দমতো অপশন বেছে নিন।"
     )
+    bot.send_message(message.chat.id, welcome_text, reply_markup=main_menu())
 
-@bot.message_handler(func=lambda message: message.text == "👤 প্রোফাইল")
-def show_profile(message):
-    user = get_user_data(message.from_user.id)
-    text = (f"👤 **আপনার প্রোফাইল**\n\n"
-            f"🆔 আইডি: `{message.from_user.id}`\n"
-            f"💰 ব্যালেন্স: {round(user['balance'], 2)} TK")
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
+@bot.message_handler(func=lambda m: m.text == "👤 প্রোফাইল")
+def profile(message):
+    user = get_user(message.from_user.id)
+    text = (
+        "<b>👤 আপনার প্রোফাইল তথ্য</b>\n"
+        "━━━━━━━━━━━━━━━━━━\n"
+        f"🆔 ইউজার আইডি: <code>{user['user_id']}</code>\n"
+        f"💰 বর্তমান ব্যালেন্স: <b>{round(user['balance'], 2)} TK</b>\n"
+        f"💸 মোট খরচ: {round(user['total_spent'], 2)} TK\n"
+        f"📅 জয়েনিং ডেট: {user['join_date']}\n"
+        "━━━━━━━━━━━━━━━━━━"
+    )
+    bot.send_message(message.chat.id, text)
 
-@bot.message_handler(func=lambda message: message.text == "💰 ব্যালেন্স রিচার্জ")
-def recharge_info(message):
-    text = (f"💳 **ব্যালেন্স রিচার্জ করার নিয়ম**\n\n"
-            f"আপনার ইউজার আইডি: `{message.from_user.id}`\n\n"
-            f"বিকাশ/নগদ (Personal): `01XXXXXXXXX`\n"
-            f"টাকা পাঠিয়ে আপনার ট্রানজেকশন আইডি (TrxID) এবং ইউজার আইডি এডমিনকে পাঠান।\n\n"
-            f"এডমিন: @YourUsername") # এখানে আপনার টেলিগ্রাম ইউজারনেম দিন
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: message.text == "📊 সার্ভিস লিস্ট")
+@bot.message_handler(func=lambda m: m.text == "📊 সার্ভিস লিস্ট")
 def service_list(message):
-    bot.send_message(message.chat.id, "সার্ভিস লিস্ট দেখতে [Peakerr.com](https://peakerr.com/services) ভিজিট করুন এবং সার্ভিস আইডিটি নোট করুন।", parse_mode="Markdown")
-
-@bot.message_handler(func=lambda message: message.text == "🛒 অর্ডার করুন")
-def order_instruction(message):
-    text = ("🛒 **অর্ডার করার নিয়ম**\n\n"
-            "নিচের ফরম্যাটে মেসেজ দিন:\n"
-            "`ServiceID_Link_Quantity`\n\n"
-            "উদাহরণ: আপনি যদি ১০৫ নম্বর সার্ভিসের ১০০০ মেম্বার নিতে চান তবে লিখুন:\n"
-            "`105_https://t.me/yourchannel_1000`")
-    bot.send_message(message.chat.id, text, parse_mode="Markdown")
-
-# অর্ডার প্রসেস (ID_Link_Quantity)
-@bot.message_handler(func=lambda message: "_" in message.text)
-def handle_order(message):
+    # সরাসরি Peakerr থেকে সার্ভিস লিস্ট আনা (প্রথম ১০টি উদাহরণ হিসেবে)
+    bot.send_message(message.chat.id, "🔄 সার্ভিস লিস্ট লোড হচ্ছে...")
     try:
-        data = message.text.split('_')
-        if len(data) != 3: return
+        res = requests.post(PEAKERR_API_URL, data={'key': PEAKERR_API_KEY, 'action': 'services'}).json()
+        text = "<b>📊 জনপ্রিয় সার্ভিসসমূহ (প্রতি ১০০০ এর দাম):</b>\n\n"
+        for s in res[:15]: # প্রথম ১৫টি সার্ভিস দেখাচ্ছি
+            price_bdt = float(s['rate']) * DOLLAR_TO_BDT
+            text += f"🆔 <code>{s['service']}</code> - {s['name']}\n💰 মূল্য: <b>{round(price_bdt, 2)} TK</b>\n\n"
+        bot.send_message(message.chat.id, text)
+    except:
+        bot.send_message(message.chat.id, "❌ সার্ভিস লিস্ট পেতে সমস্যা হচ্ছে।")
+
+@bot.message_handler(func=lambda m: m.text == "💰 রিচার্জ")
+def recharge(message):
+    text = (
+        "<b>💰 ব্যালেন্স রিচার্জ করার নিয়ম:</b>\n\n"
+        "১. বিকাশ/নগদ (Personal): <code>017XXXXXXXX</code>\n"
+        "২. টাকা পাঠিয়ে ট্রানজেকশন আইডি (TrxID) কপি করুন।\n"
+        "৩. এডমিনকে আপনার ইউজার আইডি এবং TrxID পাঠান।\n\n"
+        f"আপনার আইডি: <code>{message.from_user.id}</code>\n"
+        "এডমিন আইডি: @AdminUsername"
+    )
+    bot.send_message(message.chat.id, text)
+
+@bot.message_handler(func=lambda m: m.text == "🛒 অর্ডার করুন")
+def order_now(message):
+    msg = (
+        "<b>🛒 নতুন অর্ডার করতে নিচের ফরম্যাটে মেসেজ দিন:</b>\n\n"
+        "<code>ID_Link_Quantity</code>\n\n"
+        "উদাহরণ: আপনি 105 নাম্বার সার্ভিসের 500 মেম্বার নিতে চাইলে লিখবেন:\n"
+        "<code>105_https://t.me/channel_500</code>"
+    )
+    bot.send_message(message.chat.id, msg)
+
+@bot.message_handler(func=lambda m: m.text == "📜 অর্ডার হিস্ট্রি")
+def history(message):
+    orders = orders_col.find({"user_id": message.from_user.id}).sort("_id", -1).limit(5)
+    text = "<b>📜 আপনার শেষ ৫টি অর্ডার:</b>\n\n"
+    count = 0
+    for o in orders:
+        count += 1
+        text += f"🔹 অর্ডার আইডি: {o['order_id']}\n🔸 স্ট্যাটাস: {o['status']}\n💰 খরচ: {o['cost']} TK\n\n"
+    if count == 0: text = "আপনার কোনো অর্ডার হিস্ট্রি নেই।"
+    bot.send_message(message.chat.id, text)
+
+# --- অর্ডার প্রসেসিং ---
+@bot.message_handler(func=lambda m: "_" in m.text)
+def handle_order_logic(message):
+    try:
+        parts = message.text.split('_')
+        if len(parts) != 3: return
         
-        s_id = data[0].strip()
-        link = data[1].strip()
-        qty = int(data[2].strip())
+        s_id, link, qty = parts[0], parts[1], int(parts[2])
+        user = get_user(message.from_user.id)
         
-        user = get_user_data(message.from_user.id)
-        cost = (qty / 1000) * RATE_PER_1000 # আপনার লাভসহ খরচ
+        # সার্ভিস রেট চেক (API থেকে)
+        services = requests.post(PEAKERR_API_URL, data={'key': PEAKERR_API_KEY, 'action': 'services'}).json()
+        rate = 0
+        for s in services:
+            if str(s['service']) == str(s_id):
+                rate = float(s['rate'])
+                break
         
-        if user['balance'] < cost:
-            bot.reply_to(message, f"❌ আপনার ব্যালেন্স পর্যাপ্ত নয়! প্রয়োজন {cost} TK।")
+        if rate == 0:
+            bot.reply_to(message, "❌ ভুল সার্ভিস আইডি!")
             return
 
-        # Peakerr API Call
-        payload = {
-            'key': PEAKERR_API_KEY,
-            'action': 'add',
-            'service': s_id,
-            'link': link,
-            'quantity': qty
-        }
-        response = requests.post(PEAKERR_API_URL, data=payload).json()
+        cost = (qty / 1000) * (rate * DOLLAR_TO_BDT)
+        
+        if user['balance'] < cost:
+            bot.reply_to(message, f"❌ পর্যাপ্ত ব্যালেন্স নেই। আপনার প্রয়োজন {round(cost, 2)} TK।")
+            return
 
-        if 'order' in response:
-            update_user_balance(message.from_user.id, -cost)
-            bot.reply_to(message, f"✅ অর্ডার সফল হয়েছে!\n\n🆔 অর্ডার আইডি: {response['order']}\n💰 খরচ: {cost} TK\n📉 অবশিষ্ট ব্যালেন্স: {round(get_user_data(message.from_user.id)['balance'], 2)} TK")
-            # এডমিনকে জানানো
-            bot.send_message(ADMIN_ID, f"🔔 নতুন অর্ডার!\nইউজার: {message.from_user.id}\nসার্ভিস: {s_id}\nপরিমাণ: {qty}")
+        # Peakerr এ অর্ডার সাবমিট
+        payload = {'key': PEAKERR_API_KEY, 'action': 'add', 'service': s_id, 'link': link, 'quantity': qty}
+        res = requests.post(PEAKERR_API_URL, data=payload).json()
+
+        if 'order' in res:
+            update_balance(message.from_user.id, -cost)
+            users_col.update_one({"user_id": message.from_user.id}, {"$inc": {"total_spent": cost}})
+            
+            # ডাটাবেসে অর্ডার সেভ
+            orders_col.insert_one({
+                "user_id": message.from_user.id,
+                "order_id": res['order'],
+                "cost": round(cost, 2),
+                "status": "Pending",
+                "date": datetime.now()
+            })
+            
+            bot.send_message(message.chat.id, f"✅ <b>অর্ডার সফল!</b>\n\n🆔 অর্ডার আইডি: <code>{res['order']}</code>\n💰 খরচ: {round(cost, 2)} TK")
+            bot.send_message(ADMIN_ID, f"🔔 <b>নতুন অর্ডার!</b>\nইউজার: {message.from_user.id}\nখরচ: {round(cost, 2)} TK")
         else:
-            bot.reply_to(message, f"❌ API ত্রুটি: {response.get('error', 'অর্ডার করা যায়নি')}")
+            bot.reply_to(message, f"❌ ত্রুটি: {res.get('error')}")
 
     except Exception as e:
-        bot.reply_to(message, "⚠️ ভুল ফরম্যাট! দয়া করে `ID_Link_Quantity` এভাবে লিখুন।")
+        bot.reply_to(message, "⚠️ সঠিক ফরম্যাটে দিন: ServiceID_Link_Quantity")
 
-# --- এডমিন কমান্ডস ---
+# --- অ্যাডমিন কমান্ডস ---
 
 @bot.message_handler(commands=['add'])
-def add_balance_admin(message):
+def admin_add_bal(message):
     if message.from_user.id == ADMIN_ID:
         try:
-            # /add 1234567 500
-            args = message.text.split()
-            target_id = int(args[1])
-            amount = float(args[2])
-            
-            update_user_balance(target_id, amount)
-            bot.send_message(message.chat.id, f"✅ ইউজার `{target_id}` এর অ্যাকাউন্টে {amount} TK যোগ করা হয়েছে।", parse_mode="Markdown")
-            bot.send_message(target_id, f"💰 এডমিন আপনার অ্যাকাউন্টে {amount} TK যোগ করেছেন।")
+            _, t_id, amt = message.text.split()
+            update_balance(int(t_id), float(amt))
+            bot.send_message(message.chat.id, f"✅ ইউজার {t_id} এ {amt} TK যোগ করা হয়েছে।")
+            bot.send_message(int(t_id), f"💰 অভিনন্দন! এডমিন আপনার অ্যাকাউন্টে {amt} TK যোগ করেছেন।")
         except:
-            bot.reply_to(message, "ব্যবহার: `/add [User_ID] [Amount]`")
-    else:
-        bot.reply_to(message, "🚫 আপনি এডমিন নন।")
+            bot.reply_to(message, "ফরম্যাট: /add [UserID] [Amount]")
 
-# রান বোট
+@bot.message_handler(commands=['broadcast'])
+def broadcast(message):
+    if message.from_user.id == ADMIN_ID:
+        msg_text = message.text.replace("/broadcast ", "")
+        all_users = users_col.find()
+        count = 0
+        for u in all_users:
+            try:
+                bot.send_message(u['user_id'], f"📢 <b>ঘোষণা:</b>\n\n{msg_text}")
+                count += 1
+            except: pass
+        bot.send_message(ADMIN_ID, f"✅ {count} জন ইউজারের কাছে মেসেজ পাঠানো হয়েছে।")
+
+@bot.message_handler(func=lambda m: m.text == "📞 সাপোর্ট")
+def support(message):
+    bot.send_message(message.chat.id, "যেকোনো সমস্যায় যোগাযোগ করুন: @YourUsername")
+
+# --- রান বোট ---
 if __name__ == "__main__":
-    print("Bot is starting...")
     Thread(target=run_flask).start()
-    bot.infinity_polling()
+    print("🚀 SMM Bot is Polling...")
+    while True:
+        try:
+            bot.polling(none_stop=True, interval=0, timeout=20)
+        except Exception as e:
+            time.sleep(5)
